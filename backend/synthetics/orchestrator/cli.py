@@ -242,7 +242,7 @@ def fit_judge_threshold(sheet: Annotated[Path, typer.Argument(help="the filled r
 @app.command()
 def bakeoff(out: Annotated[Path, typer.Option(help="report directory")] = Path("runs/bakeoff"),
             mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",
-            n_speakers: Annotated[int, typer.Option(help="NSC speakers sampled across gender x ethnicity")] = 60,
+            n_speakers: Annotated[int, typer.Option(help="NSC speakers sampled across gender x ethnicity")] = 30,
             targets: Annotated[int, typer.Option(help="target clips cloned per speaker")] = 3,
             modes: Annotated[str, typer.Option(help="TTS modes, comma-separated (ultimate, continuation, reference)")] = "",
             raw_speakers: Annotated[int, typer.Option(help="speakers also cloned from the raw reference")] = 10,

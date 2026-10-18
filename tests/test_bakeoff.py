@@ -11,7 +11,7 @@ import yaml
 from synthetics.config import load_run_config
 from synthetics.nsc.references import ReferenceIndex
 from synthetics.nsc.settings import nsc_paths
-from synthetics.validators.bakeoff import run_bakeoff, select_speakers
+from synthetics.validators.bakeoff import Bakeoff, run_bakeoff, select_speakers
 from synthetics.validators.sv_calibration import eer, run_calibration
 from voice_helpers import fake_refs
 
@@ -42,7 +42,8 @@ def test_bakeoff_report(tmp_path):
     m = rep["by_mode"]["ultimate"]
     assert m["clones"] == 8 and rep["by_mode"]["continuation"]["clones"] == 8
     assert m["sv_wavlm_to_ref"]["mean"] == pytest.approx(1.0) and m["sv_redimnet_id_accuracy"] == 1.0
-    assert m["asr_primary_pass_rate"] == 1.0 and m["asr_limited_rate"] == 0.0 and m["stage5_pass_rate"] == 1.0
+    assert m["asr_primary_pass_rate"] == 1.0 and m["asr_limited_rate"] == 0.0
+    assert m["stage5_pass_rate"] == m["mos_pass_rate"]  # fake MOS is unrelated to the reference's; the rest passes
     assert rep["real_baseline"]["recordings"] == 8
     assert rep["separability"]["sv_wavlm"]["pairs"] == 6
     assert rep["room_colour"]["pairs"] == 2
@@ -50,6 +51,42 @@ def test_bakeoff_report(tmp_path):
     rows = [json.loads(x) for x in (tmp_path / "bo/clips.jsonl").read_text().splitlines()]
     assert len(rows) == 8 + 8 + 2 and {r["ref_kind"] for r in rows} == {"clean", "raw"}
     assert any(p.name.endswith("_raw.wav") for p in (tmp_path / "bo/listen").iterdir())
+
+
+def test_bakeoff_resumes_after_a_crash(tmp_path, monkeypatch):
+    kw = dict(mode="fake", n_speakers=4, targets=2, modes=["ultimate"], raw_speakers=1, lease=False, log=lambda _: None)
+    whole = run_bakeoff(out_dir=tmp_path / "whole", **kw)
+
+    clone, calls = Bakeoff._clone, []
+
+    def counted(crash_at):
+        def f(self, *a, **k):
+            calls.append(1)
+            if len(calls) == crash_at:
+                raise RuntimeError("killed")
+            return clone(self, *a, **k)
+        return f
+
+    # speaker 1 (raw too) makes 4 clones, the others 2: the crash comes in speaker 3
+    monkeypatch.setattr(Bakeoff, "_clone", counted(crash_at=7))
+    with pytest.raises(RuntimeError):
+        run_bakeoff(out_dir=tmp_path / "bo", **kw)
+    assert len((tmp_path / "bo/progress.jsonl").read_text().splitlines()) == 1 + 2
+
+    calls.clear()
+    monkeypatch.setattr(Bakeoff, "_clone", counted(crash_at=0))
+    resumed = run_bakeoff(out_dir=tmp_path / "bo", **kw)
+    assert len(calls) == 4  # only speakers 3 and 4
+
+    def rows(d):  # a fake clone's MOS hashes its samples, which carry a process-wide call counter
+        return [{k: v for k, v in json.loads(x).items() if k != "mos"} for x in (d / "clips.jsonl").read_text().splitlines()]
+
+    assert rows(tmp_path / "bo") == rows(tmp_path / "whole")
+    assert resumed["separability"] == whole["separability"] and resumed["real_baseline"] == whole["real_baseline"]
+
+    calls.clear()
+    run_bakeoff(out_dir=tmp_path / "bo", **{**kw, "targets": 1})  # other settings: starts over
+    assert len(calls) == 4 + 1 and (tmp_path / "bo/progress.jsonl.old").is_file()
 
 
 def test_calibrate_sv_writes_an_overlay_the_config_accepts(tmp_path):
