@@ -35,6 +35,7 @@ class RefClip:
     ethnicity: str
     first_language: str
     split: str
+    raw_path: Path | None = None  # the same segment before cleanup (bake-off room-colour check)
 
 
 class ReferenceIndex:
@@ -110,7 +111,8 @@ def _load(index_path: str, refs_dir: str) -> ReferenceIndex:
         clips.append(RefClip(speaker=r["speaker"], pair_id=r["pair_id"], path=Path(refs_dir) / r["clip"], text=r["text"],
                              duration=float(r["duration"]), mos=r.get("mos"), gender=r.get("gender", ""),
                              age=r.get("age", ""), ethnicity=r.get("ethnicity", ""),
-                             first_language=r.get("first_language", ""), split=r.get("split", "")))
+                             first_language=r.get("first_language", ""), split=r.get("split", ""),
+                             raw_path=Path(refs_dir) / r["raw_clip"] if r.get("raw_clip") else None))
     return ReferenceIndex(clips, hashlib.sha256(raw).hexdigest()[:16])
 
 

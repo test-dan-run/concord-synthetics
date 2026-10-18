@@ -64,3 +64,9 @@ judge-set run_id n="60":
     {{cli}} export-judge-set -r {{run_id}} --n {{n}}
 fit-judge sheet out="config/judge_thresholds.yaml":
     {{cli}} fit-judge-threshold {{sheet}} --out {{out}}
+
+# M4: phase C bake-off on real NSC speakers (leases the phase C services), and SV threshold calibration
+bakeoff *flags:
+    {{cli}} bakeoff {{flags}}
+calibrate-sv *flags:
+    {{cli}} calibrate-sv {{flags}}

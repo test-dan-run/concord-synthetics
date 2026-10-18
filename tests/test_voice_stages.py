@@ -10,45 +10,28 @@ import numpy as np
 import pytest
 import yaml
 
-from conftest import ROOT
 from helpers import fake_run
 from synthetics.artifacts.io import read_model, write_model
 from synthetics.artifacts.models import Script
 from synthetics.artifacts.paths import RunPaths
 from synthetics.artifacts.voice import Synthesis, VoiceValidation
 from synthetics.backends.base import Audio
-from synthetics.backends.fakes_audio import FakeSpeakerEmbedder, FakeTranscriber, fake_reference
+from synthetics.backends.fakes_audio import FakeSpeakerEmbedder, FakeTranscriber
 from synthetics.backends.registry import Backends
 from synthetics.config.schema import Role, StageId
-from synthetics.nsc.pool import load_pool
 from synthetics.orchestrator.phase_c import run_phase_c, summarise_c
 from synthetics.orchestrator.scheduler import PhaseScheduler, RunReport
 from synthetics.orchestrator.status import StatusStore
 from synthetics.stages.s4_voice import split_text
 from synthetics.voice.audio_ops import join, trim
 from synthetics.voice.nonlexical import SoundLibrary, synthetic
-
-CLIPS_PER_SPEAKER = 2
+from voice_helpers import fake_refs
 
 
 @pytest.fixture(scope="session")
 def refs_dir(tmp_path_factory):
     """nsc-part3-refs/clean/ with two fake reference clips for every pool speaker."""
-    root = tmp_path_factory.mktemp("refs")
-    lines = []
-    for sp in load_pool(ROOT / "data/nsc_part3_reference_speakers.csv"):
-        for k in range(CLIPS_PER_SPEAKER):
-            pid = f"{sp.speaker}_{k + 1:04d}"
-            rel = f"clean/{sp.speaker}/{pid}.wav"
-            a = fake_reference(pid, n_words=5)
-            (root / rel).parent.mkdir(parents=True, exist_ok=True)
-            a.save(root / rel)
-            lines.append({"speaker": sp.speaker, "pair_id": pid, "clip": rel, "duration": round(a.duration, 3),
-                          "text": "this is my reference clip lah", "mos": 3.5 - 0.1 * k, "gender": sp.gender,
-                          "age": sp.age, "ethnicity": sp.ethnicity, "first_language": sp.first_language,
-                          "split": sp.split})
-    (root / "clean/index.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
-    return root
+    return fake_refs(tmp_path_factory.mktemp("refs"))
 
 
 @pytest.fixture(autouse=True)
