@@ -41,11 +41,7 @@ def voice_env(refs_dir, tmp_path, monkeypatch):
 
 
 def scripted_run(tmp_path, n=1, seed=11, **overrides):
-    # Fakes, not real geometry: the fake MOS hashes the samples (unrelated to the reference clip's), and two random
-    # 16-bit fake voices often reach cosine 0.5, over the real pair limits. So no speaker-relative MOS floor, and
-    # pair limits only identical-looking fake voices exceed, unless a test sets them.
-    fakes = {"thresholds.mos_drop_max": 5.0, "thresholds.sv_pair_max": {"sv_wavlm": 0.85, "sv_redimnet": 0.75}}
-    rd, cfg = fake_run(tmp_path, n=n, seed=seed, **{**fakes, **overrides})
+    rd, cfg = fake_run(tmp_path, n=n, seed=seed, **overrides)
     PhaseScheduler(rd, cfg).run(until=StageId.SCRIPT_VAL)
     return rd, cfg
 
