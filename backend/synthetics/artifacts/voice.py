@@ -59,6 +59,7 @@ class Synthesis(_A):
     voices: dict[str, VoiceAssignment]  # speaker_id -> assignment
     utterances: list[UtteranceSynth]  # one per script turn, script order
     swaps: list[ReferenceSwap] = Field(default_factory=list)
+    script_sha256: str = ""  # the script these utterances were made from
 
 
 # ---------------------------------------------------------------- voice_validation.json (stage 5)
@@ -85,6 +86,7 @@ class UtteranceCheck(_A):
     seed: int
     passed: bool
     reasons: list[str] = Field(default_factory=list)  # why it failed, one short phrase each
+    skipped: list[str] = Field(default_factory=list)  # checks not applied: "sv" / "mos" (too short), "asr" (no words)
 
 
 class SpeakerCheck(_A):
@@ -109,3 +111,4 @@ class VoiceValidation(_A):
     swaps: list[ReferenceSwap] = Field(default_factory=list)
     resynth_turns: list[str] = Field(default_factory=list)  # sent back to stage 4 on a retry
     decision: Literal["pass", "fail", "retry"]
+    kept_failed: list[str] = Field(default_factory=list)  # still failing after the last attempt, kept (voice.on_exhausted)

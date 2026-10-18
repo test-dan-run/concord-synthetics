@@ -207,6 +207,45 @@ def fit_judge_threshold(sheet: Annotated[Path, typer.Argument(help="the filled r
     typer.echo(json.dumps(res, indent=2))
 
 
+
+# ---------------------------------------------------------------- phase C (M4)
+
+
+@app.command()
+def bakeoff(out: Annotated[Path, typer.Option(help="report directory")] = Path("runs/bakeoff"),
+            mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",
+            n_speakers: Annotated[int, typer.Option(help="NSC speakers sampled across gender x ethnicity")] = 60,
+            targets: Annotated[int, typer.Option(help="target clips cloned per speaker")] = 3,
+            modes: Annotated[str, typer.Option(help="TTS modes, comma-separated (ultimate, continuation, reference)")] = "",
+            raw_speakers: Annotated[int, typer.Option(help="speakers also cloned from the raw reference")] = 10,
+            seed: Annotated[int, typer.Option()] = 1,
+            lease: Annotated[bool, typer.Option(help="start/stop the phase C services through stack.py")] = True,
+            keep_services: Annotated[bool, typer.Option()] = False):
+    """Clone real NSC speakers and measure SV similarity, ASR error, MOS, separability and room colour."""
+    from ..validators.bakeoff import run_bakeoff
+    from .run import app_path
+
+    rep = run_bakeoff(out_dir=app_path(out), mode=mode, n_speakers=n_speakers, targets=targets,
+                      modes=[m.strip() for m in modes.split(",") if m.strip()] or None, raw_speakers=raw_speakers,
+                      seed=seed, lease=lease, keep_services=keep_services, log=typer.echo)
+    typer.echo(json.dumps(rep["by_mode"], indent=2))
+    typer.echo(f"report: {app_path(out) / 'report.md'}")
+
+
+@app.command("calibrate-sv")
+def calibrate_sv(out: Annotated[Path, typer.Option(help="YAML overlay to write")] = Path("config/sv_thresholds.yaml"),
+                 mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",
+                 lease: Annotated[bool, typer.Option(help="start/stop the SV services through stack.py")] = True):
+    """Fit per-model SV thresholds on real NSC same-speaker vs different-speaker pairs."""
+    from ..validators.sv_calibration import run_calibration
+    from .run import app_path
+
+    res = run_calibration(mode=mode, out=app_path(out), lease=lease, log=typer.echo)
+    typer.echo(json.dumps({"models": {m: {k: f[k] for k in ("eer", "eer_threshold", "eer_hard", "consistency_p05")}
+                                      for m, f in res["models"].items()}, "overlay": res["overlay"]}, indent=2))
+    typer.echo(f"wrote {app_path(out)}")
+
+
 # ---------------------------------------------------------------- NSC (M2)
 
 
@@ -253,6 +292,24 @@ def nsc_clean(out_dir: Annotated[Path | None, typer.Option(help="nsc-part3-refs 
     paths = nsc_paths(None, out_dir)
     res = clean_all(paths, mode=mode, keep=keep, max_candidates=max_candidates, speakers=speakers or None,
                     lease=lease, log=typer.echo)
+    typer.echo(json.dumps(res, indent=2))
+
+
+@nsc_app.command("nonlexical")
+def nsc_nonlexical(out_dir: Annotated[Path | None, typer.Option(help="sound library nonlexical/ dir")] = None,
+                   dereverb: Annotated[bool, typer.Option(help="WPE through wpe-dereverb (must be running)")] = True,
+                   speakers: Annotated[list[str], typer.Option("--speaker")] = []):  # noqa: B006
+    """Cut real laughter, coughs, breaths and noises from NSC Part 3 into the stage 4 sound library."""
+    from ..backends.registry import Backends
+    from ..config.loader import load_run_config
+    from ..config.schema import Role
+    from ..nsc.nonlexical import extract_nonlexical
+    from ..nsc.settings import nsc_paths
+    from ..voice.nonlexical import library_root
+
+    cfg = load_run_config(overrides={"run_id": "nsc-nonlexical", "seed": 0, "n_meetings": 0})
+    der = Backends(cfg.backends, [Role.DEREVERB]).get(Role.DEREVERB) if dereverb else None
+    res = extract_nonlexical(nsc_paths(), out_dir or library_root(), der, speakers=speakers or None, log=typer.echo)
     typer.echo(json.dumps(res, indent=2))
 
 

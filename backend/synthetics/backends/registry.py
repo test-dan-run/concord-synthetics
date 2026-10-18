@@ -86,6 +86,14 @@ class Backends:
             return aicore_impl.AicoreEnhancer(service, self.transport)
         if role in (Role.QUALITY, Role.REF_QUALITY):
             return aicore_impl.AicoreQualityScorer(service, self.transport)
+        if role == Role.TTS:
+            return aicore_impl.AicoreVoiceCloner(service, self.transport)
+        if role in ASR_ROLES:
+            return aicore_impl.AicoreTranscriber(service, self.transport)
+        if role in SV_ROLES:
+            return aicore_impl.AicoreSpeakerEmbedder(service, self.transport, name=role.value)
+        if role == Role.ALIGNER:
+            return aicore_impl.AicoreAligner(service, self.transport)
         raise BackendError(f"role {role.value!r} has no aicore client yet (later milestone)")
 
 

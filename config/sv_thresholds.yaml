@@ -1,0 +1,12 @@
+# Written by `synthetics calibrate-sv` from 875 clean NSC clips of 175 speakers (sv_wavlm: wavlm-sv, sv_redimnet: redimnet2-sv).
+# EER: sv_wavlm 0.53%, sv_redimnet 0.18%. Pass it to init-run with --config.
+thresholds:
+  sv:
+    sv_wavlm: 0.5568
+    sv_redimnet: 0.6515
+  sv_pair_max:
+    sv_wavlm: 0.5568
+    sv_redimnet: 0.6515
+  sv_consistency_min:
+    sv_wavlm: 0.6872
+    sv_redimnet: 0.7991

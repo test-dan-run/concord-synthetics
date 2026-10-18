@@ -1,0 +1,115 @@
+{
+  "speakers": 175,
+  "clips": 875,
+  "refs_index": "61df15f930a7831f",
+  "models": {
+    "sv_wavlm": {
+      "eer": 0.0053,
+      "eer_threshold": 0.5568,
+      "eer_hard": 0.0098,
+      "eer_hard_threshold": 0.5815,
+      "far_1pct_threshold": 0.5332,
+      "consistency_p05": 0.6872,
+      "same": {
+        "n": 1750,
+        "mean": 0.7696,
+        "p05": 0.643,
+        "p50": 0.7794,
+        "p95": 0.8639,
+        "min": 0.4761,
+        "max": 0.914
+      },
+      "diff": {
+        "n": 15225,
+        "mean": 0.245,
+        "p05": 0.0637,
+        "p50": 0.2393,
+        "p95": 0.4496,
+        "min": -0.165,
+        "max": 0.7903
+      },
+      "hard_diff": {
+        "n": 2652,
+        "mean": 0.3224,
+        "p05": 0.1293,
+        "p50": 0.3225,
+        "p95": 0.5077,
+        "min": -0.0534,
+        "max": 0.7903
+      },
+      "speaker_consistency": {
+        "n": 175,
+        "mean": 0.7696,
+        "p05": 0.6872,
+        "p50": 0.7716,
+        "p95": 0.8418,
+        "min": 0.6293,
+        "max": 0.8737
+      }
+    },
+    "sv_redimnet": {
+      "eer": 0.0018,
+      "eer_threshold": 0.6515,
+      "eer_hard": 0.0034,
+      "eer_hard_threshold": 0.6747,
+      "far_1pct_threshold": 0.5962,
+      "consistency_p05": 0.7991,
+      "same": {
+        "n": 1750,
+        "mean": 0.8565,
+        "p05": 0.7645,
+        "p50": 0.8645,
+        "p95": 0.9218,
+        "min": 0.6158,
+        "max": 0.9522
+      },
+      "diff": {
+        "n": 15225,
+        "mean": 0.3357,
+        "p05": 0.1725,
+        "p50": 0.3304,
+        "p95": 0.5186,
+        "min": -0.0583,
+        "max": 0.8299
+      },
+      "hard_diff": {
+        "n": 2652,
+        "mean": 0.406,
+        "p05": 0.2398,
+        "p50": 0.4059,
+        "p95": 0.5704,
+        "min": 0.0494,
+        "max": 0.8299
+      },
+      "speaker_consistency": {
+        "n": 175,
+        "mean": 0.8565,
+        "p05": 0.7991,
+        "p50": 0.8606,
+        "p95": 0.9006,
+        "min": 0.7424,
+        "max": 0.9199
+      }
+    }
+  },
+  "overlay": {
+    "thresholds": {
+      "sv": {
+        "sv_wavlm": 0.5568,
+        "sv_redimnet": 0.6515
+      },
+      "sv_pair_max": {
+        "sv_wavlm": 0.5568,
+        "sv_redimnet": 0.6515
+      },
+      "sv_consistency_min": {
+        "sv_wavlm": 0.6872,
+        "sv_redimnet": 0.7991
+      }
+    }
+  },
+  "services": {
+    "sv_wavlm": "wavlm-sv",
+    "sv_redimnet": "redimnet2-sv"
+  }
+}

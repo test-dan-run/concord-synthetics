@@ -326,6 +326,22 @@ class VoiceConfig(_M):
 
     trim_pad_s: float = 0.05  # silence kept at each end of an utterance WAV (contract with stage 6)
     max_speaker_swaps: int = 2  # per meeting, after clip swaps run out
+    max_clip_swaps: int = 1  # per speaker, before a speaker swap
+    # stage 4: cloning
+    tts_mode: Literal["ultimate", "continuation", "reference"] = "ultimate"  # voxcpm2 `mode` (clip as prompt and/or reference)
+    cfg_value: float = 2.0
+    inference_timesteps: int = 10
+    max_tts_chars: int = 300  # longer speech is split at sentence ends and cloned piece by piece
+    piece_gap_s: float = 0.15  # silence between the pieces of one turn (speech chunks, non-lexical clips)
+    trim_db: float = 40.0  # trimming treats audio this far below the peak as silence
+    nonlexical_tts: dict[str, str] = Field(default_factory=lambda: {"laugh": "haha"})  # tag -> text to clone when the
+    # sound library has no clip for it; other tags fall back to a synthetic sound
+    # stage 5: checks
+    asr_language: str | None = None  # None: the ASR detects it (code-switched turns)
+    wer_ignore_fillers: bool = True  # (um) (uh) are dropped from both sides before WER; particles stay
+    sv_min_s: float = 1.0  # shorter utterances skip the SV checks (embeddings are unreliable)
+    mos_min_s: float = 1.0  # shorter utterances skip the MOS floor
+    on_exhausted: Literal["fail", "keep_flagged"] = "fail"  # an utterance still failing after retries.tts_attempts
 
 
 class AssemblyConfig(_M):
