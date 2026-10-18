@@ -37,6 +37,14 @@ run run_id *flags:
 stage n run_id meeting *flags:
     {{cli}} stage {{n}} -r {{run_id}} -m {{meeting}} {{flags}}
 
+# stages 6-8 (assembly, acoustics, labels) on meetings that passed phase C, then manifest.jsonl
+post run_id *flags:
+    {{cli}} post -r {{run_id}} {{flags}}
+
+# rebuild a run's manifest.jsonl from its per-meeting entries
+manifest run_id:
+    {{cli}} manifest -r {{run_id}}
+
 # per-stage state counts and the regeneration rate
 status run_id *flags:
     {{cli}} status -r {{run_id}} {{flags}}
