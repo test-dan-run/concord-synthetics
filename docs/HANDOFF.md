@@ -102,6 +102,9 @@ in the root `README.md`, and `just render`.
   close the gap. Revisit `turn_taking.yaml`.
 - **`SOUND_LIBRARY_DIR`:** not in `.env.example` yet. Both libraries default to
   `/home/user/code/datasets/sound-library` (`nonlexical/` from NSC, `noise/` from DEMAND + ESC-50).
+- **Fake mode with real references:** a fake-mode run passes all eight stages only with synthetic NSC references
+  (`NSC_REFS_DIR` from `tests/voice_helpers.fake_refs`). `FakeSpeakerEmbedder` reads voice tones that real NSC
+  clips do not have, so stage 5 fails on real references in fake mode. Real-model runs are unaffected.
 - **Judge pass mark:** the M3 judge threshold of 3.0 is still provisional. Gemma judges strictly and Apertus
   leniently.
 
