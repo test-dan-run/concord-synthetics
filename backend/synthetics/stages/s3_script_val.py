@@ -41,7 +41,7 @@ class ScriptValidationStage:
     roles = (Role.JUDGE_PRIMARY, Role.JUDGE_TIEBREAK)
     reads = ("meeting", "script")
     writes = ("script_validation",)
-    version = "2"
+    version = "3"
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         return Stage3Config(judge=cfg.judge, judge_pass=cfg.thresholds.judge_pass, judge_band=cfg.thresholds.judge_band,

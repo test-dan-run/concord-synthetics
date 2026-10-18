@@ -196,3 +196,30 @@ def test_a_new_stage_version_reruns_passed_meetings(tmp_path, monkeypatch):
     report = PhaseScheduler(rd, cfg).run()
     states = {(int(o.stage), o.state) for o in report.outcomes}
     assert (2, "pass") in states and (3, "pass") in states, states
+
+
+def test_two_person_meeting_plan_passes_the_rate_rules(cfg, splits):
+    """A 2-person meeting at a 2:1 share is mostly continuations; rates count turn changes only."""
+    from synthetics.artifacts.models import Script, Turn
+    from synthetics.text import Lexicon
+    from synthetics.validators.script_rules import check_script
+
+    lex = Lexicon.load(cfg.lexicon.path)
+    found = 0
+    for i in range(300):
+        m = sample_meeting(cfg, splits, meeting_id_for(i), i, np.random.default_rng(i))
+        if m.n_speakers > 3:
+            continue
+        found += 1
+        plan = build_plan(m, cfg.turn_taking, np.random.default_rng(i))
+        turns = [Turn(turn_id=f"t{k:04d}", speaker_id=t.speaker_id, interaction=t.interaction,
+                      text="ok (mm)" if t.interaction == "backchannel" else "we go first then see how-",
+                      text_norm="ok mm" if t.interaction == "backchannel" else "we go first then see how")
+                 for k, t in enumerate(plan.turns)]
+        script = Script(meeting_id=m.meeting_id, brief="", turns=turns, generator={
+            "service": "x", "template_version": "x", "thinking": False, "seed": 0, "temperature": 0.0,
+            "lexicon_version": "x", "round": 1, "chunks": 1})
+        rules = {r.name: r for r in check_script(script, m, cfg, lex)}
+        for name in ("overlap-start rate", "interruption rate", "turn shares"):
+            assert rules[name].passed, (m.meeting_id, m.n_speakers, name, rules[name])
+    assert found >= 10

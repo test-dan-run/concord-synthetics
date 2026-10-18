@@ -49,10 +49,11 @@ def check_script(script: Script, m: MeetingSpec, cfg: RunConfig, lex: Lexicon) -
     seg = m.dynamics.presentation
     in_seg = set(range(seg.start_turn, seg.end_turn)) if seg else set()
     free = [t for i, t in enumerate(main) if i not in in_seg and t.interaction != "presentation"]
-    transitions = max(len(free) - 1, 1)
-    inter = sum(t.interaction == "interruption" for t in free[1:])
+    changes = [b for a, b in zip(free, free[1:], strict=False) if a.speaker_id != b.speaker_id]  # turn changes
+    transitions = max(len(changes), 1)
+    inter = sum(t.interaction == "interruption" for t in changes)
     checks.append(_rate_ok("interruption rate", inter / transitions, 0.0, tt.interruption_rate.hi + 0.03))
-    ovl = sum(t.interaction == "overlap_start" for t in free[1:])
+    ovl = sum(t.interaction == "overlap_start" for t in changes)
     expected = tt.overlap_share * (1 - tt.interruption_rate.mean())
     checks.append(_rate_ok("overlap-start rate", ovl / transitions, max(0.0, expected - 0.1), expected + 0.1))
     bc = sum(t.interaction == "backchannel" for t in turns)

@@ -21,6 +21,11 @@ from .numbers import ONES, TENS, spell_numbers
 
 DEFAULT_LEXICON = Path(__file__).resolve().parents[1] / "config" / "defaults" / "singlish_lexicon.yaml"
 
+# Stage directions a generator sometimes adds despite the prompt; they are not speech, so they are dropped.
+STAGE_DIRECTIONS = frozenset({"whisper", "whispers", "whispering", "whispered", "softly", "quietly", "aside", "sotto voce",
+                              "under breath", "under their breath", "muttering", "mutters", "to self", "to herself",
+                              "to himself", "pause", "pauses", "long pause", "silence", "sarcastically", "jokingly",
+                              "nodding", "nods", "shrugs", "smiling", "smiles", "sighing"})
 NUMBER_WORDS = frozenset(ONES + TENS[2:] + ["hundred", "thousand", "million", "billion"])
 _PAREN = re.compile(r"\(([^()\[\]]{1,20})\)")
 _BRACKET = re.compile(r"\[([^\[\]()]{1,20})\]")
@@ -87,6 +92,8 @@ def _fix_markup(text: str, lex: Lexicon) -> str:
 
     def paren(m: re.Match) -> str:
         inner = m.group(1).strip()
+        if inner.lower() in STAGE_DIRECTIONS:
+            return ""  # never spoken, never transcribed
         if (p := lex.particle(inner)) is not None:
             return f"({p})"
         if (f := lex.filler(inner)) is not None:

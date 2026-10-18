@@ -124,9 +124,11 @@ def build_plan(m: MeetingSpec, tt: TurnTakingConfig, rng: np.random.Generator) -
     interruption_rate = tt.interruption_rate.sample(rng)
     n_free = len(free_order)
     kinds = ["normal"] * n_free
-    slots = [int(i) for i in rng.permutation(np.arange(1, n_free))] if n_free > 1 else []
-    n_int = int(round(interruption_rate * (n_free - 1)))
-    n_ovl = int(round(tt.overlap_share * (n_free - 1 - n_int)))
+    # only a change of speaker can be an interruption or an overlap; a speaker going on is a continuation
+    changes = [i for i in range(1, n_free) if free_order[i] != free_order[i - 1]]
+    slots = [changes[int(i)] for i in rng.permutation(len(changes))]
+    n_int = int(round(interruption_rate * len(changes)))
+    n_ovl = int(round(tt.overlap_share * (len(changes) - n_int)))
     for i in slots[:n_int]:
         kinds[i] = "interruption"
     for i in slots[n_int:n_int + n_ovl]:

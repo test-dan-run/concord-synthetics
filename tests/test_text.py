@@ -52,6 +52,9 @@ def lex() -> Lexicon:
     # Mandarin in characters, untouched
     ("then 他会教 lah", "then 他会教 (lah)"),
     ("  extra   spaces , here ", "extra spaces, here"),
+    # stage directions are not speech
+    ("(whisper) eh, after this go makan?", "eh, after this go makan?"),
+    ("ok (whispering) can (lah)", "ok can (lah)"),
 ])
 def test_canonical_text(lex, raw, expected):
     assert canonical_text(raw, lex) == expected
