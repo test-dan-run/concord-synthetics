@@ -175,3 +175,15 @@ def test_aec_ducks_local_talk_during_remote_speech():
     assert local[0, int(1.5 * SR)] == pytest.approx(10 ** (-6 / 20), rel=0.02)
     assert local[0, int(3.5 * SR)] == pytest.approx(1.0, abs=0.01)
     assert remote[0, int(1.0 * SR) + 10] < 0.2 and remote[0, int(1.5 * SR)] == 1.0
+
+
+def test_adding_library_clips_changes_the_stage7_cache_key(cfg, tmp_path):
+    from synthetics.stages.s7_acoustic import AcousticStage
+
+    c = cfg.model_copy(update={"simulation": cfg.simulation.model_copy(update={"noise_library": tmp_path})})
+    st = AcousticStage()
+    assert st.config_slice(c).noise_library_sha == "none"
+    (tmp_path / "index.yaml").write_text("clips: []\n")
+    a = st.config_slice(c).noise_library_sha
+    (tmp_path / "index.yaml").write_text("clips:\n  - {id: x, kind: hvac, file: x.wav}\n")
+    assert a != st.config_slice(c).noise_library_sha != "none"

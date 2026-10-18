@@ -310,6 +310,16 @@ def _library_root(sim: SimulationConfig):
 class Stage7Config(BaseModel):
     simulation: SimulationConfig
     sample_rate: int
+    noise_library_sha: str  # index.yaml of the noise library: adding clips re-renders
+
+
+def library_sha(sim: SimulationConfig) -> str:
+    root = _library_root(sim)
+    if root is None or not (root / "index.yaml").is_file():
+        return "none"
+    from ..artifacts.io import file_sha256
+
+    return file_sha256(root / "index.yaml")
 
 
 class AcousticStage:
@@ -322,7 +332,8 @@ class AcousticStage:
     version = "1"
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
-        return Stage7Config(simulation=cfg.simulation, sample_rate=cfg.sample_rate)
+        return Stage7Config(simulation=cfg.simulation, sample_rate=cfg.sample_rate,
+                            noise_library_sha=library_sha(cfg.simulation))
 
     def run(self, ctx: StageContext) -> StageResult:
         from .runner import meeting_seed
