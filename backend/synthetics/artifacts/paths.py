@@ -85,6 +85,10 @@ class MeetingPaths:
         return self.utterances_dir / f"{turn_id}.wav"
 
     @property
+    def synthesis(self) -> Path:
+        return self.dir / "synthesis.json"
+
+    @property
     def voice_validation(self) -> Path:
         return self.dir / "voice_validation.json"
 

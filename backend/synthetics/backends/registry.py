@@ -12,6 +12,8 @@ from .transport import Transport
 
 CHAT_ROLES = {Role.GENERATOR, Role.JUDGE_PRIMARY, Role.JUDGE_TIEBREAK}
 ENHANCER_ROLES = {Role.ENHANCER, Role.DEREVERB}
+ASR_ROLES = {Role.ASR_PRIMARY, Role.ASR_SINGLISH}
+SV_ROLES = {Role.SV_WAVLM, Role.SV_REDIMNET}
 
 
 class Backends:
@@ -59,7 +61,7 @@ class Backends:
     def _build(self, role: Role) -> Any:
         service = self.service(role)
         if self.cfg.mode == "fake":
-            from . import fakes
+            from . import fakes, fakes_audio
 
             if role in CHAT_ROLES:
                 return fakes.FakeChatLLM(service)
@@ -67,6 +69,14 @@ class Backends:
                 return fakes.FakeEnhancer()
             if role in (Role.QUALITY, Role.REF_QUALITY):
                 return fakes.FakeQualityScorer()
+            if role == Role.TTS:
+                return fakes_audio.FakeVoiceCloner()
+            if role in ASR_ROLES:
+                return fakes_audio.FakeTranscriber(service)
+            if role in SV_ROLES:
+                return fakes_audio.FakeSpeakerEmbedder(role.value)
+            if role == Role.ALIGNER:
+                return fakes_audio.FakeAligner()
             raise BackendError(f"no fake for role {role.value!r} yet")
         from . import aicore_impl
 

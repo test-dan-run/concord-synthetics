@@ -284,6 +284,12 @@ class ThresholdsConfig(_M):
     short_utterance_words: int = 3
     mos_min: float = 3.0
     script_rules: ScriptRuleThresholds = ScriptRuleThresholds()
+    # stage 5; provisional until calibrate-sv (M4) writes measured values
+    sv_consistency_min: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.75, "sv_redimnet": 0.65})
+    sv_pair_max: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.85, "sv_redimnet": 0.75})
+    # stage 8 quality gates
+    align_coverage_min: float = 0.90  # share of text_norm words with a timing, per utterance
+    align_slack_s: float = 0.05  # an aligned word may overrun its segment by this much
 
 
 class BackendsConfig(_M):
@@ -315,6 +321,33 @@ class LexiconRef(_M):
     path: Path = Path("backend/synthetics/config/defaults/singlish_lexicon.yaml")
 
 
+class VoiceConfig(_M):
+    """Stages 4-5 (M5)."""
+
+    trim_pad_s: float = 0.05  # silence kept at each end of an utterance WAV (contract with stage 6)
+    max_speaker_swaps: int = 2  # per meeting, after clip swaps run out
+
+
+class AssemblyConfig(_M):
+    """Stage 6 (M6). Turn-taking distributions live in `turn_taking`."""
+
+    lead_in_s: float = 1.0  # silence before the first segment
+    tail_s: float = 1.0  # silence after the last segment
+
+
+class SimulationConfig(_M):
+    """Stage 7 (M7). Room and device values are sampled in stage 1 (`acoustics`); these are render settings."""
+
+    ism_max_order: int = 3  # with ray tracing for the late tail
+    ray_tracing: list[RoomClass] = Field(default_factory=lambda: ["large"])
+
+
+class LabelsConfig(_M):
+    """Stage 8 (M8). Gates live in `thresholds`."""
+
+    align_language: str = "en"
+
+
 # ---------------------------------------------------------------- the run
 
 
@@ -333,6 +366,10 @@ class RunConfig(_M):
     stages: dict[StageId, StageToggle] = Field(default_factory=lambda: {s: StageToggle() for s in StageId})
     script: ScriptConfig = ScriptConfig()
     judge: JudgeConfig = JudgeConfig()
+    voice: VoiceConfig = VoiceConfig()
+    assembly: AssemblyConfig = AssemblyConfig()
+    simulation: SimulationConfig = SimulationConfig()
+    labels: LabelsConfig = LabelsConfig()
     backends: BackendsConfig
     phases: PhasesConfig
     retries: RetryConfig = RetryConfig()
