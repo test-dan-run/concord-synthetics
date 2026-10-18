@@ -1,0 +1,46 @@
+# Stages 1 and 7. Design doc "Acoustics".
+acoustics:
+  rt60:
+    small: {dist: uniform, lo: 0.3, hi: 0.6}
+    large: {dist: uniform, lo: 0.4, hi: 0.9}
+  wall_material: {dist: categorical, weights: {glass: 0.5, plasterboard: 0.5}}
+  carpet: {dist: bernoulli, p: 0.7}
+  acoustic_tile: {dist: bernoulli, p: 0.6}
+  snr_db:
+    small: {dist: uniform, lo: 10, hi: 30}
+    large: {dist: uniform, lo: 5, hi: 25}
+  hvac: {dist: bernoulli, p: 1.0}
+  projector_fan_if_presentation: {dist: bernoulli, p: 0.6}
+  keyboard:
+    small: {dist: bernoulli, p: 0.6}
+    large: {dist: bernoulli, p: 0.3}
+  events_per_10min:
+    small: {dist: uniform, lo: 0, hi: 3}
+    large: {dist: uniform, lo: 1, hi: 5}
+  event_types: {dist: categorical, weights: {door: 0.25, chair: 0.3, cup: 0.25, paper: 0.2}}
+  orientation_max_deg: 60
+  orientation_resample_p: 0.3
+  hybrid:
+    small: {dist: bernoulli, p: 0.1}
+    large: {dist: bernoulli, p: 0.3}
+  remote_count:
+    small: {dist: fixed, value: 1}
+    large: {dist: int_uniform, lo: 1, hi: 3}
+  mic:
+    laptop_distance: {dist: uniform, lo: 0.3, hi: 0.5}
+    laptop_height: {dist: uniform, lo: 0.1, hi: 0.25}
+    centre_offset: {dist: uniform, lo: -0.15, hi: 0.15}
+    centre_height: 0.05
+    centre_array: {dist: bernoulli, p: 0.5}
+    array_channels: 4
+    array_radius: 0.035
+    speakerphone_offset: {dist: uniform, lo: 0.3, hi: 0.8}
+  device_chain:
+    agc: {dist: bernoulli, p: 0.7}
+    band_limit: {dist: bernoulli, p: 0.5}
+    band_limit_hz: {dist: uniform, lo: 5000, hi: 7500}
+    codec: {dist: bernoulli, p: 0.5}
+    codec_kbps: {dist: int_uniform, lo: 16, hi: 32}
+    clipping: {dist: bernoulli, p: 0.05}
+    clipping_level: {dist: uniform, lo: 0.6, hi: 0.9}
+    aec_artifacts_if_hybrid: {dist: bernoulli, p: 1.0}

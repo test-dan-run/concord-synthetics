@@ -1,0 +1,18 @@
+# Role -> platform service name or alias. Swapping a model is a change here only.
+backends:
+  mode: aicore            # aicore | fake | replay | record
+  recordings: tests/recorded
+  roles:
+    generator: qwen-sea-lion-v4-5-27b-it
+    judge_primary: gemma-sea-lion-v4-27b-it-nvfp4
+    judge_tiebreak: apertus-sea-lion-v4-8b-it
+    tts: voxcpm2
+    asr_primary: qwen3-asr-1-7b
+    asr_singlish: meralion-3-3b-asr
+    sv_wavlm: wavlm-sv
+    sv_redimnet: redimnet2-sv
+    quality: utmos
+    ref_quality: dnsmos
+    aligner: qwen3-forced-aligner
+    enhancer: deepfilternet3
+    dereverb: wpe-dereverb

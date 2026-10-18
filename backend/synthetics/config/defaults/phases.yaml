@@ -1,0 +1,12 @@
+# Which roles share the GPU in each phase. Only one phase's models fit at a time.
+phases:
+  platform_dir: ../../platform
+  no_evict: false
+  lease_timeout_s: 1800
+  phases:
+    A: {roles: [generator], batch_size: 20, max_rounds: 3}
+    B: {roles: [judge_primary], batch_size: 20, max_rounds: 3}
+    B2: {roles: [judge_tiebreak], batch_size: 20}   # sub-phase: the two judges do not fit together (M3)
+    C: {roles: [tts, asr_primary, asr_singlish, sv_wavlm, sv_redimnet, quality], batch_size: 20}
+    D: {roles: [aligner], batch_size: 20}
+    prep: {roles: [enhancer, dereverb, ref_quality], batch_size: 20}

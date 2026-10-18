@@ -1,0 +1,62 @@
+# Stage 1: room class, speaker count, room and table. Design doc "Meeting config rules".
+room_classes:
+  ratio: {dist: categorical, weights: {small: 0.3, large: 0.7}}
+  classes:
+    small:
+      speakers: {dist: int_uniform, lo: 2, hi: 6}
+      length: {dist: uniform, lo: 3.0, hi: 5.0}
+      width: {dist: uniform, lo: 2.5, hi: 4.0}
+      ceiling: {dist: uniform, lo: 2.6, hi: 3.0}
+      table_shapes: {dist: categorical, weights: {rect: 0.6, round: 0.4}}
+      shapes:
+        rect: {width: {dist: uniform, lo: 0.8, hi: 1.1}, length_frac: {dist: uniform, lo: 0.6, hi: 1.0}, min_length: 1.2}
+        round: {width: {dist: uniform, lo: 0.9, hi: 1.4}}
+    large:
+      speakers: {dist: int_uniform, lo: 7, hi: 20}
+      length: {dist: uniform, lo: 6.0, hi: 12.0}
+      width: {dist: uniform, lo: 4.0, hi: 7.0}
+      ceiling: {dist: uniform, lo: 2.7, hi: 3.5}
+      table_shapes: {dist: categorical, weights: {rect: 0.6, oval: 0.4}}
+      shapes:
+        rect: {width: {dist: uniform, lo: 1.0, hi: 1.5}, length_frac: {dist: uniform, lo: 0.5, hi: 1.0}, min_length: 2.4}
+        oval: {width: {dist: uniform, lo: 1.2, hi: 1.8}, length_frac: {dist: uniform, lo: 0.5, hi: 1.0}, min_length: 2.4}
+  seat_pitch: {dist: uniform, lo: 0.6, hi: 0.75}   # one person per 0.6-0.75 m of table edge
+  wall_clearance: 1.0                              # table edge to every wall
+  table_height: {dist: uniform, lo: 0.72, hi: 0.76}
+  seat_offset: {dist: uniform, lo: 0.2, hi: 0.3}   # mouth, outward from the table edge
+  min_person_gap: 0.5
+  max_fit_resamples: 500
+
+# Meeting length and turn shares (stage 1 dynamics).
+dynamics:
+  duration_min:
+    small: {dist: uniform, lo: 10, hi: 30}
+    large: {dist: uniform, lo: 20, hi: 45}
+  turns_per_min: {dist: uniform, lo: 8, hi: 12}
+  presenter_share_boost: 3.0
+  wall_share_weight: 0.4
+  remote_share_weight: 0.7
+  meeting_types:
+    small: {dist: categorical, weights: {"working session": 0.35, "1:1 or small sync": 0.25, "design review": 0.2, "client call prep": 0.2}}
+    large: {dist: categorical, weights: {"weekly team meeting": 0.3, "project steering committee": 0.2, "all-hands update": 0.15, "incident review": 0.15, "quarterly planning": 0.2}}
+  topics:
+    - go-live readiness for PayNow refunds in the merchant app
+    - migrating the HR system to a new cloud vendor before the financial year end
+    - planning the Chinese New Year staff dinner and budget
+    - delays in the MRT station renovation contract and penalty clauses
+    - rolling out SingPass login for the customer portal
+    - hawker centre food stall tender evaluation for the town council
+    - a data leak incident and the PDPC notification timeline
+    - office move from Raffles Place to one-north and the seating plan
+    - hiring plan for the polytechnic internship programme
+    - quarterly sales review for the Southeast Asia region
+    - NDP volunteer roster and logistics for the community club
+    - budget overrun on the HDB upgrading works
+    - choosing a vendor for the new point-of-sale terminals
+    - preparing the grant application for the IMDA digitalisation scheme
+    - customer complaints about late deliveries during the GSS sale
+    - redesigning the onboarding flow of the banking app
+    - school CCA schedule clash and parent feedback
+    - clinic appointment no-show rates and the SMS reminder pilot
+    - warehouse automation trial in Tuas and staff retraining
+    - year-end performance appraisal calibration

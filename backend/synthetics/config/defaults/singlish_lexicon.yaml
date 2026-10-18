@@ -1,0 +1,68 @@
+# Singlish transcription convention (design doc "Singlish transcription convention"). Versioned with each
+# run: stage 2 writes scripts in it, stage 5 compares ASR output in it, stage 8 writes transcripts in it.
+version: lex-1
+
+# Discourse particles: canonical spelling, written in parentheses in `text`.
+particles: [lah, leh, lor, meh, hor, ah, sia, mah, liao, wor]
+# Variant -> canonical. Applied to bare tokens and to parenthesised tokens.
+particle_variants: {la: lah, lahh: lah, laa: lah, lo: lor, loh: lor, lorh: lor, horh: hor, siah: sia, seh: sia, ma: mah, liaw: liao, wo: wor, woh: wor, ar: ah, arh: ah}
+# Ambiguous as bare words (interjections, Malay words): wrapped only when they end a clause.
+clause_final_only: [ah, mah, ma, ar, arh, wo, sia, seh]
+
+# Fillers: closed set in parentheses.
+fillers: [uh, um, mm]
+filler_variants: {er: uh, erm: um, ehm: um, uhm: um, umm: um, uhh: uh, hmm: mm, mmm: mm, mhm: mm, mmhmm: mm, "uh huh": mm}
+
+# Non-speech: square-bracket tags, excluded from WER.
+nonspeech: [laugh, cough, breath, noise]
+nonspeech_variants: {laughs: laugh, laughter: laugh, laughing: laugh, chuckle: laugh, chuckles: laugh, giggle: laugh, coughs: cough, coughing: cough, sigh: breath, sighs: breath, breathes: breath, inhale: breath, exhale: breath, sound: noise, background: noise}
+
+# Romanised Singapore spellings of loanwords. Variant -> canonical.
+loanwords:
+  paisey: paiseh
+  "pai seh": paiseh
+  paise: paiseh
+  kaypo: kaypoh
+  "kay poh": kaypoh
+  "da bao": dabao
+  tapau: dabao
+  ta pau: dabao
+  "bo jio": "bo jio"
+  aiyoh: aiyo
+  aiyah: aiya
+  "wah lau": walao
+  walau: walao
+  "wa lau": walao
+  "ang mo": "ang moh"
+  angmoh: "ang moh"
+  sian: sian
+  siong: siong
+  jialat: jialat
+  "jia lat": jialat
+  kiasu: kiasu
+  shiok: shiok
+  chope: chope
+  lepak: lepak
+  alamak: alamak
+  makan: makan
+  tahan: tahan
+  sabo: sabo
+  atas: atas
+  gostan: gostan
+  kena: kena
+  suay: suay
+  chim: chim
+  steady: steady
+  buay: buay
+  "can or not": "can or not"
+
+# TTS pronunciation hints (TTS input only; `text` keeps the canonical spelling).
+tts_hints: {paiseh: "pie-seh", shiok: "shee-ok", kaypoh: "kay-poh", dabao: "dah-bao", walao: "wah-lao", jialat: "jee-ah-lat", lor: "law", hor: "haw", sia: "see-ah", wor: "wuh"}
+
+# NSC Part 3 transcript notation -> ours (§4.3). Square brackets in NSC are discourse particles; parentheses
+# are fillers or paralinguistic codes; <lang>...</lang> marks code-switching; #...# marks names (never used).
+nsc:
+  bracket_particles: {lah: lah, leh: leh, lor: lor, meh: meh, hor: hor, ah: ah, sia: sia, seh: sia, mah: mah, liao: liao, wor: wor, ma: mah, la: lah, lo: lor}
+  bracket_words: {oh: oh, eh: eh, what: what, one: one, "a'ah": "a'ah", kan: kan, jer: jer, ya: ya, yah: ya, huh: huh, wah: wah, hah: hah, ha: ha, ay: ay}
+  paren_codes: {ppl: laugh, ppc: cough, ppb: breath, ppo: noise}
+  paren_fillers: {uh: uh, um: um, mm: mm, er: uh, erm: um, hmm: mm, mmhmm: mm, "uh huh": mm, ah: uh, eh: uh, oh: mm}

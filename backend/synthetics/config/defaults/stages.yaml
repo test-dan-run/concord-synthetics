@@ -1,0 +1,45 @@
+# Stage toggles (ablations), stage 2/3 generation settings, retries and thresholds.
+stages:
+  1: {enabled: true}
+  2: {enabled: true}
+  3: {enabled: true}
+  4: {enabled: true}
+  5: {enabled: true}
+  6: {enabled: true}
+  7: {enabled: true}
+  8: {enabled: true}
+script:
+  template_version: persona_v2
+  chunk_turns: 40
+  context_turns: 30
+  temperature: 0.8
+  max_tokens: 8192
+  thinking: false
+judge:
+  rubric_version: rubric_v2
+  temperature: 0.0
+  max_tokens: 4096
+  thinking: false
+  max_script_turns: 600
+retries:
+  script_rounds: 3
+  tts_attempts: 3
+thresholds:
+  judge_pass: 3.0          # 1-5 overall (rubric_v2: 3 = usable); refit with `synthetics fit-judge-threshold`
+  judge_band: 0.5          # tie-breaker when |overall - judge_pass| <= band
+  sv: {sv_wavlm: 0.70, sv_redimnet: 0.60}   # placeholders until `calibrate-sv` (M4); equal standing
+  wer_max: 0.35
+  cer_max_short: 0.40
+  short_utterance_words: 3
+  mos_min: 3.0
+  script_rules:
+    share_tolerance: 0.08
+    min_words_normal: 2
+    max_words_backchannel: 4
+    max_unknown_tags: 0
+speaker_pool:
+  path: data/nsc_part3_reference_speakers.csv
+  version: p3-175-v1
+  split_mix: {dist: categorical, weights: {train: 0.7, dev: 0.15, test: 0.15}}
+lexicon:
+  path: backend/synthetics/config/defaults/singlish_lexicon.yaml

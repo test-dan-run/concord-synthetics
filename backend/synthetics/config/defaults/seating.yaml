@@ -1,0 +1,31 @@
+# Stage 1: positions. Design doc "Seating and presenters".
+seating:
+  seated_mouth_height: {dist: uniform, lo: 1.1, hi: 1.2}
+  front_wall: W
+  wall:
+    by_choice: {dist: bernoulli, p: 0.15}          # large rooms whose table still has free seats
+    by_choice_count: {dist: int_uniform, lo: 1, hi: 3}
+    offset: {dist: uniform, lo: 0.3, hi: 0.6}
+    chair_pitch: {dist: uniform, lo: 0.5, hi: 0.7}
+    walls: [N, S, E]
+    corner_margin: 0.4
+  presenters:
+    presentation:
+      small: {dist: bernoulli, p: 0.3}
+      large: {dist: bernoulli, p: 0.4}
+    count:
+      small: {dist: categorical, weights: {1: 0.8, 2: 0.2}}
+      large: {dist: categorical, weights: {1: 0.7, 2: 0.3}}
+    distance_from_front: {dist: uniform, lo: 0.5, hi: 1.5}
+    side_margin: 0.5
+    mouth_height: {dist: uniform, lo: 1.5, hi: 1.75}
+    drift_radius: {dist: fixed, value: 1.0}
+    facing_screen_p: 0.3
+    return_to_seat: {dist: bernoulli, p: 0.5}
+    min_gap_between: 0.8
+    start_frac: {dist: uniform, lo: 0.05, hi: 0.3}
+    length_frac: {dist: uniform, lo: 0.15, hi: 0.35}
+  screen:
+    width: {dist: uniform, lo: 1.5, hi: 2.5}
+    bottom: 0.9
+    top: 2.1

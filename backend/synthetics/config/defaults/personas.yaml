@@ -1,0 +1,47 @@
+# Stage 1 persona attributes. Gender, ethnicity, first language and code-switching languages always come
+# from the assigned NSC speaker's sheet row (§4.3); the values below fill in the rest.
+personas:
+  seniority_by_age:
+    1X: {dist: categorical, weights: {intern: 0.8, junior: 0.2}}
+    2X: {dist: categorical, weights: {intern: 0.15, junior: 0.6, mid: 0.25}}
+    3X: {dist: categorical, weights: {junior: 0.25, mid: 0.5, senior: 0.25}}
+    4X: {dist: categorical, weights: {mid: 0.35, senior: 0.5, exec: 0.15}}
+    5X: {dist: categorical, weights: {mid: 0.25, senior: 0.5, exec: 0.25}}
+    6X: {dist: categorical, weights: {senior: 0.5, exec: 0.5}}
+  roles:
+    intern: [intern, trainee, student assistant]
+    junior: [analyst, associate, executive, coordinator, junior engineer, admin officer]
+    mid: [engineer, product manager, finance manager, QA engineer, ops executive, HR partner, designer, account manager, vendor rep, contractor]
+    senior: [engineering lead, project lead, senior manager, principal consultant, regional manager, head of operations]
+    exec: [director, vice president, general manager, chief operating officer]
+  chair_seniority: {intern: 0.02, junior: 0.1, mid: 0.6, senior: 1.5, exec: 2.0}
+  code_switching: {dist: categorical, weights: {low: 0.4, medium: 0.4, high: 0.2}}
+  verbosity_by_tercile:
+    - {dist: categorical, weights: {high: 0.6, medium: 0.3, low: 0.1}}
+    - {dist: categorical, weights: {high: 0.2, medium: 0.6, low: 0.2}}
+    - {dist: categorical, weights: {high: 0.05, medium: 0.35, low: 0.6}}
+  l1_languages: {ENGLISH: English, CHINESE: Mandarin, MALAY: Malay, TAMIL: Tamil, HINDI: Hindi}
+  switch_languages:
+    CHINESE: [Mandarin, Hokkien, Cantonese]
+    MALAY: [Malay]
+    INDIAN: [Tamil, Malay]
+    OTHERS: [Malay]
+  # Synthetic names for the script only; NSC speaker identities never reach a prompt (PDPA).
+  names:
+    CHINESE:
+      F: [Mei Ling, Hui Min, Xin Yi, Jia Hui, Shu Fen, Pei Shan, Li Ting, Wan Ting, Grace, Michelle, Rachel, Joanne]
+      M: [Wei Ming, Jun Jie, Kok Wai, Zhi Hao, Boon Kiat, Chee Keong, Marcus, Kelvin, Darren, Jonathan, Desmond, Eugene]
+    MALAY:
+      F: [Nurul, Siti, Aisyah, Farah, Nadia, Liyana, Hidayah, Syafiqah]
+      M: [Hafiz, Faizal, Irfan, Azman, Rizwan, Hakim, Syafiq, Firdaus]
+    INDIAN:
+      F: [Priya, Kavitha, Deepa, Lakshmi, Anitha, Shalini, Meena, Revathi]
+      M: [Arun, Rajesh, Suresh, Vikram, Karthik, Ganesh, Pradeep, Ravi]
+    OTHERS:
+      F: [Maria, Sarah, Anne, Joanna]
+      M: [Daniel, Adrian, Paul, Nicholas]
+  surnames:
+    CHINESE: [Tan, Lim, Lee, Ng, Ong, Wong, Goh, Chua, Chan, Koh, Teo, Ang, Yeo, Tay, Ho, Low]
+    MALAY: [bin Ahmad, binte Ismail, bin Rahman, binte Hassan, bin Osman, binte Yusof]
+    INDIAN: [Kumar, Pillai, Nair, Rajan, Menon, Krishnan, Subramaniam, Singh]
+    OTHERS: [Fernandez, De Souza, Pereira, Rodrigues]

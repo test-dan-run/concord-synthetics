@@ -1,0 +1,273 @@
+"""`synthetics` CLI. Every command is idempotent and reads status.json to decide what is left."""
+
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from ..config.schema import Phase, StageId
+
+app = typer.Typer(no_args_is_help=True, add_completion=False, help=__doc__)
+nsc_app = typer.Typer(no_args_is_help=True, help="NSC Part 3 reference data (M2).")
+app.add_typer(nsc_app, name="nsc")
+
+RunOpt = Annotated[str, typer.Option("--run", "-r", help="run id under SYNTHETICS_RUNS, or a run directory")]
+
+
+def _setup_logging(verbose: bool) -> None:
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO, format="%(asctime)s %(name)s %(message)s",
+                        datefmt="%H:%M:%S")
+    for noisy in ("httpx", "httpx2", "openai", "httpcore", "httpcore2"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
+def _run_dir(run: str) -> Path:
+    from .run import runs_root
+
+    p = Path(run)
+    return p if (p / "config.yaml").is_file() else runs_root() / run
+
+
+def _parse_overrides(items: list[str]) -> dict:
+    import yaml
+
+    out = {}
+    for item in items:
+        key, _, value = item.partition("=")
+        out[key.strip()] = yaml.safe_load(value)
+    return out
+
+
+def _load_dotenv() -> None:
+    """The app's .env, without overriding variables already set (as `just` does)."""
+    import os
+
+    from .run import APP_ROOT
+
+    path = APP_ROOT / ".env"
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.removeprefix("export ").partition("=")
+            if value.strip():
+                os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
+@app.callback()
+def main(verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False) -> None:
+    _load_dotenv()
+    _setup_logging(verbose)
+
+
+@app.command("init-run")
+def init_run_cmd(run_id: Annotated[str, typer.Argument()],
+                 n: Annotated[int, typer.Option("--n", help="number of meetings")] = 20,
+                 seed: Annotated[int, typer.Option()] = 1,
+                 config: Annotated[list[Path], typer.Option("--config", "-c", help="YAML overlays, in order")] = [],  # noqa: B006
+                 set_: Annotated[list[str], typer.Option("--set", help="dotted override, e.g. backends.mode=fake")] = []):  # noqa: B006
+    """Create runs/<run_id>: frozen config.yaml, speaker_splits.json and empty meeting folders."""
+    from .run import init_run
+
+    run_dir = init_run(run_id, n_meetings=n, seed=seed, configs=list(config), overrides=_parse_overrides(set_))
+    typer.echo(f"created {run_dir}")
+
+
+@app.command()
+def splits(run: RunOpt):
+    """Copy the fixed splits from the pool CSV into the run's speaker_splits.json."""
+    from .run import load_run, write_splits
+
+    rd = _run_dir(run)
+    cfg, _ = load_run(rd)
+    path = write_splits(rd, cfg)
+    data = json.loads(path.read_text())
+    typer.echo(f"wrote {path}: pool {data['pool_version']}, counts {data['counts']}")
+
+
+def _scheduler(run: str, keep_services: bool):
+    from .run import load_run
+    from .scheduler import PhaseScheduler
+
+    rd = _run_dir(run)
+    cfg, _ = load_run(rd)
+    return rd, PhaseScheduler(rd, cfg, keep_services=keep_services)
+
+
+@app.command()
+def run(run: RunOpt,
+        until: Annotated[int, typer.Option(help="last stage to run (1-3 implemented)")] = 3,
+        only: Annotated[str | None, typer.Option(help="one phase only: CPU, A, B or B2")] = None,
+        keep_services: Annotated[bool, typer.Option(help="leave leased services running afterwards")] = False):
+    """Run the pipeline phase by phase (stages 1-3 so far)."""
+    from .scheduler import summarise
+
+    rd, sched = _scheduler(run, keep_services)
+    sched.run(until=StageId(min(until, 3)), only=Phase(only) if only else None)
+    typer.echo(json.dumps(summarise(rd, StageId(min(until, 3))), indent=2))
+
+
+@app.command()
+def resume(run: RunOpt, keep_services: Annotated[bool, typer.Option()] = False):
+    """Continue a run where it stopped (same as `run`; finished stages are cache hits)."""
+    from .scheduler import summarise
+
+    rd, sched = _scheduler(run, keep_services)
+    sched.run()
+    typer.echo(json.dumps(summarise(rd), indent=2))
+
+
+@app.command()
+def stage(n: Annotated[int, typer.Argument(help="stage number")], run: RunOpt,
+          meeting: Annotated[str, typer.Option("--meeting", "-m")],
+          force: Annotated[bool, typer.Option(help="ignore the cache")] = False):
+    """Debug one stage on one meeting (services must already be up)."""
+    from ..backends.registry import Backends
+    from ..stages.runner import run_stage
+    from .run import load_run
+    from .scheduler import stages
+
+    rd = _run_dir(run)
+    cfg, _ = load_run(rd)
+    out = run_stage(stages()[StageId(n)], rd, meeting, cfg, Backends(cfg.backends), force=force)
+    typer.echo(f"{out.meeting_id} stage {int(out.stage)}: {out.state} {out.detail}")
+
+
+@app.command()
+def status(run: RunOpt, meetings: Annotated[bool, typer.Option(help="one line per meeting")] = False):
+    """Per-stage state counts and the regeneration rate."""
+    from .run import load_run
+    from .scheduler import summarise
+    from .status import StatusStore
+
+    rd = _run_dir(run)
+    _, h = load_run(rd)
+    s = summarise(rd)
+    typer.echo(f"run {rd.name} · config {h}")
+    typer.echo(json.dumps(s, indent=2))
+    if meetings:
+        store = StatusStore(rd)
+        for mid in store.run.meeting_ids():
+            st = store.get(mid)
+            cells = [f"{k}:{v.state}" for k, v in st.stages.items()]
+            typer.echo(f"{mid}  " + "  ".join(cells))
+
+
+@app.command("sampler-report")
+def sampler_report(n: Annotated[int, typer.Option()] = 1000, seed: Annotated[int, typer.Option()] = 1,
+                   config: Annotated[list[Path], typer.Option("--config", "-c")] = [],  # noqa: B006
+                   out: Annotated[Path | None, typer.Option(help="also write the checks as JSON")] = None):
+    """M1 exit check: sample N meetings (stage 1 only, in memory) and compare every rate with its target."""
+    import numpy as np
+
+    from ..config.loader import load_run_config
+    from ..nsc.pool import speaker_splits
+    from ..stages.runner import meeting_id_for, meeting_seed
+    from ..stages.s1_sample import sample_meeting
+    from ..validators.sampler_report import as_dicts, render, sampler_checks
+    from .run import resolve
+
+    cfg = resolve(load_run_config(*config, overrides={"run_id": "sampler-report", "seed": seed, "n_meetings": n}))
+    sp = speaker_splits(cfg.speaker_pool.path, cfg.speaker_pool.version)
+    ms = []
+    for i in range(1, n + 1):
+        mid = meeting_id_for(i)
+        s = meeting_seed(seed, mid)
+        ms.append(sample_meeting(cfg, sp, mid, s, np.random.default_rng(np.random.SeedSequence([seed, s, 1]))))
+    checks = sampler_checks(cfg, ms)
+    typer.echo(render(checks))
+    if out:
+        out.write_text(json.dumps(as_dicts(checks), indent=2))
+    raise typer.Exit(0 if all(c.ok for c in checks) else 1)
+
+
+@app.command("export-judge-set")
+def export_judge_set(run: RunOpt, n: Annotated[int, typer.Option(help="scripts to export (50-100)")] = 60,
+                     name: Annotated[str, typer.Option()] = "judge_set_1",
+                     seed: Annotated[int, typer.Option()] = 1):
+    """Write a CSV rating sheet (one row per script) plus readable script files for human raters."""
+    from ..validators.calibration import export_judge_set as export
+
+    path = export(_run_dir(run), n=n, name=name, seed=seed)
+    typer.echo(f"wrote {path}")
+
+
+@app.command("fit-judge-threshold")
+def fit_judge_threshold(sheet: Annotated[Path, typer.Argument(help="the filled rating CSV")],
+                        out: Annotated[Path | None, typer.Option(help="YAML overlay to write")] = None):
+    """Fit the judge pass mark and borderline band from a filled rating sheet."""
+    from ..validators.calibration import fit_threshold
+
+    res = fit_threshold(sheet, out=out)
+    typer.echo(json.dumps(res, indent=2))
+
+
+# ---------------------------------------------------------------- NSC (M2)
+
+
+@nsc_app.command("validate")
+def nsc_validate(nsc_dir: Annotated[Path | None, typer.Option(help="NSC Part 3 root (holds SDM/)")] = None):
+    """Check the pool CSV: 175 unique speakers, every zip present, split sizes, partner pairs."""
+    from ..nsc.pool import load_pool, validate_pool
+    from ..nsc.settings import nsc_paths
+    from .run import app_path
+
+    paths = nsc_paths(nsc_dir)
+    pool = load_pool(app_path("data/nsc_part3_reference_speakers.csv"))
+    problems = validate_pool(pool, paths.nsc_dir)
+    for p in problems:
+        typer.echo(f"problem: {p}")
+    typer.echo("pool ok" if not problems else f"{len(problems)} problem(s)")
+    raise typer.Exit(0 if not problems else 1)
+
+
+@nsc_app.command("extract")
+def nsc_extract(nsc_dir: Annotated[Path | None, typer.Option()] = None,
+                out_dir: Annotated[Path | None, typer.Option(help="nsc-part3-refs root")] = None,
+                speakers: Annotated[list[str], typer.Option("--speaker")] = []):  # noqa: B006
+    """Read the selected zips in place; write candidate 5-15 s segments (our notation) to nsc-part3-refs/raw/."""
+    from ..nsc.extract import extract_all
+    from ..nsc.settings import nsc_paths
+
+    paths = nsc_paths(nsc_dir, out_dir)
+    res = extract_all(paths, speakers=speakers or None, log=typer.echo)
+    typer.echo(json.dumps(res, indent=2))
+
+
+@nsc_app.command("clean")
+def nsc_clean(out_dir: Annotated[Path | None, typer.Option(help="nsc-part3-refs root")] = None,
+              mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",
+              keep: Annotated[int, typer.Option(help="clean references kept per speaker (top by MOS)")] = 5,
+              max_candidates: Annotated[int, typer.Option(help="candidates cleaned per speaker")] = 12,
+              speakers: Annotated[list[str], typer.Option("--speaker")] = [],  # noqa: B006
+              lease: Annotated[bool, typer.Option(help="start/stop the prep services through stack.py")] = True):
+    """Denoise (DeepFilterNet3) then dereverb (WPE) candidates into nsc-part3-refs/clean/, keep the top by MOS."""
+    from ..nsc.cleanup import clean_all
+    from ..nsc.settings import nsc_paths
+
+    paths = nsc_paths(None, out_dir)
+    res = clean_all(paths, mode=mode, keep=keep, max_candidates=max_candidates, speakers=speakers or None,
+                    lease=lease, log=typer.echo)
+    typer.echo(json.dumps(res, indent=2))
+
+
+@nsc_app.command("report")
+def nsc_report(out_dir: Annotated[Path | None, typer.Option()] = None,
+               min_refs: Annotated[int, typer.Option()] = 3, meeting_size: Annotated[int, typer.Option()] = 20,
+               mos_min: Annotated[float, typer.Option(help="DNSMOS OVRL floor for a usable reference")] = 2.5):
+    """M2 exit check: clean references per speaker, and whether each split can still fill a meeting."""
+    from ..nsc.cleanup import readiness
+    from ..nsc.settings import nsc_paths
+
+    res = readiness(nsc_paths(None, out_dir), min_refs=min_refs, meeting_size=meeting_size, mos_min=mos_min)
+    typer.echo(json.dumps(res, indent=2))
+    raise typer.Exit(0 if res["ok"] else 1)
+
+
+if __name__ == "__main__":
+    app()
