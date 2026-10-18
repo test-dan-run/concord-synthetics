@@ -295,6 +295,24 @@ def nsc_clean(out_dir: Annotated[Path | None, typer.Option(help="nsc-part3-refs 
     typer.echo(json.dumps(res, indent=2))
 
 
+@nsc_app.command("nonlexical")
+def nsc_nonlexical(out_dir: Annotated[Path | None, typer.Option(help="sound library nonlexical/ dir")] = None,
+                   dereverb: Annotated[bool, typer.Option(help="WPE through wpe-dereverb (must be running)")] = True,
+                   speakers: Annotated[list[str], typer.Option("--speaker")] = []):  # noqa: B006
+    """Cut real laughter, coughs, breaths and noises from NSC Part 3 into the stage 4 sound library."""
+    from ..backends.registry import Backends
+    from ..config.loader import load_run_config
+    from ..config.schema import Role
+    from ..nsc.nonlexical import extract_nonlexical
+    from ..nsc.settings import nsc_paths
+    from ..voice.nonlexical import library_root
+
+    cfg = load_run_config(overrides={"run_id": "nsc-nonlexical", "seed": 0, "n_meetings": 0})
+    der = Backends(cfg.backends, [Role.DEREVERB]).get(Role.DEREVERB) if dereverb else None
+    res = extract_nonlexical(nsc_paths(), out_dir or library_root(), der, speakers=speakers or None, log=typer.echo)
+    typer.echo(json.dumps(res, indent=2))
+
+
 @nsc_app.command("report")
 def nsc_report(out_dir: Annotated[Path | None, typer.Option()] = None,
                min_refs: Annotated[int, typer.Option()] = 3, meeting_size: Annotated[int, typer.Option()] = 20,

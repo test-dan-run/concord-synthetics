@@ -305,3 +305,41 @@ def test_nonspeech_tags_use_library_clips_or_stand_ins(tmp_path, monkeypatch):
     vv = {u.turn_id: u for u in read_model(mp.voice_validation, VoiceValidation).utterances}
     assert vv[t1.turn_id].passed  # "haha" is not held against the ASR check
     assert "asr" in vv[t2.turn_id].skipped
+
+
+def test_library_prefers_the_speakers_own_clips_and_never_crosses_splits(tmp_path):
+    lib_dir = tmp_path / "nonlexical"
+    (lib_dir / "laugh").mkdir(parents=True)
+    rows = [("a-own", "F", "00000001", "train"), ("b-same-split", "F", "00000002", "train"),
+            ("c-test-split", "F", "00000003", "test"), ("d-generic", "F", None, None)]
+    for cid, *_ in rows:
+        Audio(np.full(800, 0.1, np.float32), 16000).save(lib_dir / f"laugh/{cid}.wav")
+    (lib_dir / "index.yaml").write_text(yaml.safe_dump({"version": "v", "clips": [
+        {"id": cid, "tag": "laugh", "file": f"laugh/{cid}.wav", "gender": g, "speaker": sp, "split": split}
+        for cid, g, sp, split in rows]}))
+    lib = SoundLibrary.load(lib_dir)
+    keys = [f"k{i}" for i in range(40)]
+    assert {lib.pick("laugh", "F", k, speaker="00000001", split="train")[0] for k in keys} == {"a-own"}
+    others = {lib.pick("laugh", "F", k, speaker="00000009", split="train")[0] for k in keys}
+    assert others == {"a-own", "b-same-split", "d-generic"}  # never the test-split speaker
+    assert {lib.pick("laugh", "F", k, speaker="00000009", split="dev")[0] for k in keys} == {"d-generic"}
+
+
+def test_nsc_nonlexical_selection_and_shaping():
+    from synthetics.nsc.nonlexical import MAX_S, MIN_S, candidates, shape
+
+    manifest = "\n".join(json.dumps(e) for e in [
+        {"pair_id": "00000001_0001", "text": "(ppl)", "source_start": 1.0, "source_end": 2.5},
+        {"pair_id": "00000001_0002", "text": " (PPC) ", "source_start": 0.0, "source_end": 0.8},
+        {"pair_id": "00000001_0003", "text": "(ppl) ok lah", "source_start": 0.0, "source_end": 2.0},
+        {"pair_id": "00000001_0004", "text": "(ppb) (ppl)", "source_start": 0.0, "source_end": 2.0},
+        {"pair_id": "00000001_0005", "text": "(um)", "source_start": 0.0, "source_end": 1.0}])
+    assert candidates(manifest) == [("00000001_0001", "laugh", 1.5), ("00000001_0002", "cough", 0.8)]
+    sr = 16000
+    x = np.zeros(sr * 5, np.float32)
+    x[sr: sr * 5 - sr // 2] = 0.3
+    long = shape(Audio(x, sr))
+    assert long.duration == pytest.approx(MAX_S) and abs(long.samples[-1]) < 1e-3  # cut with a fade-out
+    short = np.zeros(sr, np.float32)
+    short[100:100 + int(0.1 * sr)] = 0.3
+    assert shape(Audio(short, sr)) is None and MIN_S > 0.1

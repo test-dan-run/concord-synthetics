@@ -1,15 +1,18 @@
 """Non-lexical sounds for the script's square-bracket tags: [laugh] [cough] [breath] [noise].
 
 For each tag, stage 4 uses, in order:
-1. a real clip from the sound library, `<SOUND_LIBRARY_DIR>/nonlexical/index.yaml` (gender-matched when the clip
-   records a gender), chosen deterministically from the meeting, speaker and turn;
+1. a real clip from the sound library, `<SOUND_LIBRARY_DIR>/nonlexical/index.yaml`: the voice's own NSC speaker's
+   clips if there are any, else clips of the same gender; never an NSC speaker of another split (no voice leaks
+   across splits). The choice is deterministic from the meeting, speaker and turn. `synthetics nsc nonlexical`
+   fills the library from NSC segments that are only laughter, a cough, a breath or a noise;
 2. else the text configured in `voice.nonlexical_tts` (laugh -> "haha"), cloned in the speaker's own voice;
 3. else a synthetic sound (shaped, band-limited noise), so every tag still makes some sound.
 
 index.yaml:
-    version: nl-1
+    version: nl-nsc-1
     clips:
-      - {id: laugh-f-001, tag: laugh, file: laugh/laugh-f-001.wav, gender: F, source: <url>, licence: CC-BY-4.0}
+      - {id: 00860519_0156, tag: laugh, file: laugh/00860519_0156.wav, gender: M, speaker: '00860519', split: train}
+      - {id: laugh-f-001, tag: laugh, file: laugh/laugh-f-001.wav, gender: F}      # not an NSC speaker: any split
 """
 
 from __future__ import annotations
@@ -39,6 +42,8 @@ class LibraryClip:
     tag: str
     path: Path
     gender: str | None
+    speaker: str | None = None  # NSC speaker, for clips cut from NSC
+    split: str | None = None
 
 
 class SoundLibrary:
@@ -50,8 +55,11 @@ class SoundLibrary:
     def load(cls, root: Path | None = None) -> SoundLibrary:
         return _load(str(root or library_root()))
 
-    def pick(self, tag: str, gender: str | None, key: str) -> tuple[str, Audio] | None:
-        cands = [c for c in self.clips if c.tag == tag and (c.gender in (None, "any") or gender is None or c.gender == gender)]
+    def pick(self, tag: str, gender: str | None, key: str, *, speaker: str | None = None,
+             split: str | None = None) -> tuple[str, Audio] | None:
+        cands = [c for c in self.clips if c.tag == tag and (c.split is None or split is None or c.split == split)]
+        own = [c for c in cands if speaker is not None and c.speaker == speaker]
+        cands = own or [c for c in cands if c.gender in (None, "any") or gender is None or c.gender == gender]
         if not cands:
             return None
         c = sorted(cands, key=lambda c: c.id)[_h(key) % len(cands)]
@@ -64,7 +72,8 @@ def _load(root: str) -> SoundLibrary:
     if not index.is_file():
         return SoundLibrary([], "none")
     data = yaml.safe_load(index.read_text(encoding="utf-8")) or {}
-    clips = [LibraryClip(id=str(c["id"]), tag=str(c["tag"]), path=Path(root) / c["file"], gender=c.get("gender"))
+    clips = [LibraryClip(id=str(c["id"]), tag=str(c["tag"]), path=Path(root) / c["file"], gender=c.get("gender"),
+                         speaker=str(c["speaker"]) if c.get("speaker") else None, split=c.get("split"))
              for c in data.get("clips") or []]
     return SoundLibrary(clips, str(data.get("version", "unversioned")))
 

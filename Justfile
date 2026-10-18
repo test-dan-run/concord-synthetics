@@ -59,6 +59,10 @@ nsc-clean *flags:
 nsc-report *flags:
     {{cli}} nsc report {{flags}}
 
+# M5: real laughter / coughs / breaths / noises from NSC into the stage 4 sound library (uses wpe-dereverb)
+nsc-nonlexical *flags:
+    {{cli}} nsc nonlexical {{flags}}
+
 # M3 judge calibration: rating sheet out, fitted threshold back in
 judge-set run_id n="60":
     {{cli}} export-judge-set -r {{run_id}} --n {{n}}

@@ -147,6 +147,7 @@ class VoiceStage:
             cloner.params = {"mode": vc.tts_mode, "cfg_value": vc.cfg_value, "inference_timesteps": vc.inference_timesteps}
         voice_refs: dict[str, VoiceRef] = {}
         gender = {p.speaker_id: p.nsc_speaker.gender for p in m.people}
+        pick = {sid: {"speaker": va.nsc_speaker, "split": m.split} for sid, va in voices.items()}
         paths.utterances_dir.mkdir(parents=True, exist_ok=True)
 
         utterances, made = [], 0
@@ -164,7 +165,7 @@ class VoiceStage:
             if sid not in voice_refs:
                 voice_refs[sid] = refs.voice_ref(voices[sid].clip_id)
             audio, source, tts_text, clips, sr_used = self._render(turn, voice_refs[sid], cloner, lib, lex,
-                                                                   gender.get(sid), seed,
+                                                                   gender.get(sid), pick[sid], seed,
                                                                    f"{m.meeting_id}|{turn.turn_id}", ctx)
             tts_sr = sr_used or tts_sr
             audio.save(paths.utterance(turn.turn_id))
@@ -186,7 +187,7 @@ class VoiceStage:
                                     "speech_min": round(total / 60, 2)})
 
     def _render(self, turn: Turn, ref: VoiceRef, cloner, lib: SoundLibrary, lex: Lexicon, gender: str | None,
-                seed: int, key: str, ctx: StageContext) -> tuple[Audio, str, str, list[str], int]:
+                pick: dict, seed: int, key: str, ctx: StageContext) -> tuple[Audio, str, str, list[str], int]:
         """(trimmed audio at the run rate, source, text given to the cloner, library clip ids, TTS sample rate)."""
         vc, sr = ctx.cfg.voice, ctx.cfg.sample_rate
         pieces: list[tuple[str, Audio]] = []  # ("speech" | "sound", audio at the run rate)
@@ -208,7 +209,7 @@ class VoiceStage:
                     pieces.append(("speech", clone(chunk)))
                 continue
             tag = seg.value
-            picked = lib.pick(tag, gender, f"{key}|{k}")
+            picked = lib.pick(tag, gender, f"{key}|{k}", **pick)
             if picked is not None:
                 clip_id, a = picked
                 pieces.append(("sound", trim(a.resample(sr), pad_s=0.0, below_db=vc.trim_db)))
