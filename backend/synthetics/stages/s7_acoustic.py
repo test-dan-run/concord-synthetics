@@ -20,7 +20,10 @@ Memory stays at about two (channels x samples) float32 buffers plus one channel 
 from __future__ import annotations
 
 import math
+import os
+import tempfile
 import time
+from pathlib import Path
 
 import numpy as np
 import soundfile as sf
@@ -30,7 +33,7 @@ from scipy import signal
 from ..acoustics import device, noise
 from ..acoustics.room import Pose, RoomModel, rt60_mid
 from ..acoustics.scene import segment_poses
-from ..artifacts.io import atomic_write_bytes, read_model, write_model
+from ..artifacts.io import read_model, write_model
 from ..artifacts.labels import AcousticRender, NoiseRender, Timeline
 from ..artifacts.meeting import MeetingSpec
 from ..artifacts.paths import MeetingPaths
@@ -51,13 +54,22 @@ def active_power(x: np.ndarray, sr: int, floor_db: float = 30.0) -> float:
     return float(np.mean(np.power(10.0, lev[keep] / 10)))
 
 
+CONV_CHUNK = 1 << 20  # samples (about a minute at 16 kHz): long signals are convolved piece by piece
+
+
 def add_convolved(buf: np.ndarray, x: np.ndarray, rir: np.ndarray, start: int) -> None:
-    """buf[:, start:] += x * rir (per channel), clipped to the buffer."""
-    if start >= buf.shape[1] or not len(x):
-        return
-    y = signal.oaconvolve(x[None, :].astype(np.float32), rir, axes=1)
-    n = min(y.shape[1], buf.shape[1] - start)
-    buf[:, start:start + n] += y[:, :n]
+    """buf[:, start:] += x * rir (per channel), clipped to the buffer. Overlap-add in chunks, one channel at a time,
+    so a 45 min noise bed never needs a full-length temporary per channel."""
+    total = buf.shape[1]
+    for i in range(0, len(x), CONV_CHUNK):
+        s0 = start + i
+        if s0 >= total:
+            break
+        piece = x[i:i + CONV_CHUNK].astype(np.float32, copy=False)
+        for ch in range(buf.shape[0]):
+            y = signal.oaconvolve(piece, rir[ch])
+            n = min(len(y), total - s0)
+            buf[ch, s0:s0 + n] += y[:n]
 
 
 def event_positions(m: MeetingSpec, kind: str, rng: np.random.Generator) -> tuple[float, float, float]:
@@ -96,17 +108,34 @@ def plan_noise(m: MeetingSpec, duration: float, sim: SimulationConfig, rng: np.r
     return out
 
 
-def write_wav(path, x: np.ndarray, sr: int) -> None:
-    """(channels, n) or (n,) float32 -> PCM16 WAV, written in blocks (no full-size transposed copy)."""
-    import io
-
+def write_wav(path: Path, x: np.ndarray, sr: int) -> None:
+    """(channels, n) or (n,) float32 -> PCM16 WAV, written in blocks to a temp file that is then renamed (atomic,
+    and no full-size copy in memory)."""
     x2 = np.atleast_2d(x)
-    buf = io.BytesIO()
-    with sf.SoundFile(buf, "w", samplerate=sr, channels=x2.shape[0], subtype="PCM_16", format="WAV") as f:
-        step = 1 << 18
-        for i in range(0, x2.shape[1], step):
-            f.write(np.ascontiguousarray(x2[:, i:i + step].T))
-    atomic_write_bytes(path, buf.getvalue())
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    os.close(fd)
+    try:
+        with sf.SoundFile(tmp, "w", samplerate=sr, channels=x2.shape[0], subtype="PCM_16", format="WAV") as f:
+            step = 1 << 18
+            for i in range(0, x2.shape[1], step):
+                f.write(np.ascontiguousarray(x2[:, i:i + step].T))
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def mean_power(x: np.ndarray, mask: np.ndarray | None = None) -> float:
+    """Mean power of the channel mean of `x` (channels, n), over `mask`, in chunks."""
+    total, count = 0.0, 0
+    for i in range(0, x.shape[1], CONV_CHUNK):
+        d = x[:, i:i + CONV_CHUNK].mean(axis=0, dtype=np.float64)
+        if mask is not None:
+            d = d[mask[i:i + CONV_CHUNK]]
+        total += float(np.sum(d * d))
+        count += len(d)
+    return total / count if count else 0.0
 
 
 def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rng: np.random.Generator,
@@ -179,9 +208,7 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
     speech = local  # (n_mics, n): from here on the buffer that becomes the mixture
 
     voiced = device.activity_mask(n_total, sr, [(s.start, s.end) for s in tl.segments])
-    derived = speech.mean(axis=0)
-    p_speech = float(np.mean(derived[voiced].astype(np.float64) ** 2)) if voiced.any() else 0.0
-    del derived
+    p_speech = mean_power(speech, voiced)
 
     # 4. noise: beds scaled to the SNR together, then keyboard and events relative to speech
     library = noise.load_library(_library_root(sim))
@@ -193,9 +220,7 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
         x *= 10 ** (nz.level_db / 20) / (np.std(x) + 1e-12)
         add_convolved(noise_buf, x, rirs[noise_poses[i].key()], 0)
         del x
-    nd = noise_buf.mean(axis=0)
-    p_bed = float(np.mean(nd.astype(np.float64) ** 2))
-    del nd
+    p_bed = mean_power(noise_buf)
     snr_target = m.acoustics.snr_db
     snr = math.inf
     if p_bed > 0 and p_speech > 0:
@@ -213,12 +238,15 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
             s0 = int(round(nz.start * sr))
             nz.end = round(nz.start + len(x) / sr, 3)
         h = rirs[noise_poses[i].key()]
-        ref = signal.oaconvolve(x, h[0])
-        p = active_power(ref, sr)
+        ref = np.zeros((1, len(x) + h.shape[1] - 1), np.float32)
+        add_convolved(ref, x, h[:1], 0)
+        p = active_power(ref[0], sr)
+        del ref
         if p <= 0:
             continue
-        add_convolved(noise_buf, x * math.sqrt(p_speech / p * 10 ** (nz.level_db / 10)), h, s0)
-        del x, ref
+        x *= math.sqrt(p_speech / p * 10 ** (nz.level_db / 10))
+        add_convolved(noise_buf, x, h, s0)
+        del x
     speech += noise_buf
     del noise_buf
     mix = speech
@@ -231,7 +259,7 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
     fixed = 10 ** ((sim.output_level_db - db(p_speech)) / 20) if p_speech > 0 else 1.0
     mix *= fixed
     if chain.agc:
-        g = device.agc_gain(mix.mean(axis=0), sr, target_db=sim.agc_target_db, max_gain_db=sim.agc_max_gain_db, attack_s=sim.agc_attack_s, release_s=sim.agc_release_s,
+        g = device.agc_gain(mix.mean(axis=0, dtype=np.float32), sr, target_db=sim.agc_target_db, max_gain_db=sim.agc_max_gain_db, attack_s=sim.agc_attack_s, release_s=sim.agc_release_s,
                             gate_db=sim.agc_gate_db)
         dev["agc_gain_db_min"] = round(db(float(g.min()) ** 2), 2)
         dev["agc_gain_db_max"] = round(db(float(g.max()) ** 2), 2)
@@ -249,7 +277,7 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
     if n_mics > 1:
         write_wav(paths.mixture_mc, mix, sr)
         files["mixture_mc"] = "mixture_mc.wav"
-    mono = mix.mean(axis=0) if n_mics > 1 else mix[0]
+    mono = mix.mean(axis=0, dtype=np.float32) if n_mics > 1 else mix[0].copy()
     del mix, speech
     if chain.codec_kbps:
         mono = device.opus(mono, sr, chain.codec_kbps)

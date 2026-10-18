@@ -252,15 +252,21 @@ def test_changing_sampled_acoustics_reruns_only_stages_7_and_8(tmp_path):
 
 
 def test_stage7_is_reproducible(tmp_path):
-    rd, cfg = fake_run(tmp_path, n=1, seed=3, **RICH)
-    run_to_phase_c(rd, cfg)
-    mid = RunPaths(rd).meeting_ids()[0]
+    # a large hybrid room, so ray tracing (and its random generators) and the codecs are part of the render
+    rd, cfg = fake_run(tmp_path, n=1, seed=3, **{**RICH, "acoustics.mic.centre_array": {"dist": "bernoulli", "p": 0.0}},
+                       **{"room_classes.ratio": {"dist": "categorical", "weights": {"small": 0.0, "large": 1.0}},
+                          "dynamics.duration_min": {"small": {"dist": "uniform", "lo": 4, "hi": 4},
+                                                    "large": {"dist": "uniform", "lo": 4, "hi": 4}}})
+    ids = run_to_phase_c(rd, cfg)
+    assert ids, "the fake script stages passed no meeting"
+    mid = ids[0]
     b = Backends(cfg.backends)
     s6, s7 = post_stages()[StageId.ASSEMBLE], post_stages()[StageId.ACOUSTIC]
     run_stage(s6, rd, mid, cfg, b)
     p = MeetingPaths(rd, mid)
     run_stage(s7, rd, mid, cfg, b)
     first = (file_sha256(p.mixture), file_sha256(p.render))
+    assert read_model(p.render, AcousticRender).ray_tracing
     run_stage(s7, rd, mid, cfg, b, force=True)
     assert (file_sha256(p.mixture), file_sha256(p.render)) == first
 

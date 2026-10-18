@@ -142,7 +142,8 @@ class RoomModel:
                               p=self.directivity_p)
 
     def _compute(self, room: pra.ShoeBox) -> list[list[np.ndarray]]:
-        pra.libroom.set_rng_seed(self.seed)
+        # both generators: wall scattering in C++, and the numpy one that turns ray-tracing histograms into noise
+        pra.random.seed(numpy=self.seed, libroom=self.seed)
         room.compute_rir()
         return room.rir  # [mic][source]
 

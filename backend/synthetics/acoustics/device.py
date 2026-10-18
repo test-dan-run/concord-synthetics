@@ -56,8 +56,12 @@ def agc_gain(ref: np.ndarray, sr: int, *, target_db: float, max_gain_db: float, 
         g[i] = cur
     hop = int(frame_s * sr)
     t_frames = (np.arange(len(g)) + 0.5) * hop
-    gain_db = np.interp(np.arange(len(ref)), t_frames, g) if len(g) else np.zeros(len(ref))
-    return np.power(10.0, gain_db / 20.0).astype(np.float32)
+    out = np.ones(len(ref), np.float32)
+    if len(g):
+        for i in range(0, len(ref), CHUNK):  # float64 interpolation one chunk at a time
+            gain_db = np.interp(np.arange(i, min(i + CHUNK, len(ref))), t_frames, g)
+            out[i:i + len(gain_db)] = np.power(10.0, gain_db / 20.0)
+    return out
 
 
 def hard_clip(x: np.ndarray, threshold: float) -> float:
