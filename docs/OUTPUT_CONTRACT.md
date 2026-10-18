@@ -90,7 +90,9 @@ SPEAKER <meeting_id> 1 <start> <duration> <NA> <NA> <speaker_id> <NA> <NA>
 ```
 
 Speaker labels are the meeting's speaker ids (`S01`, `S02`, and so on, where `S01` is the chair). They are local to
-the meeting. The NSC voice behind each label is in the manifest's `speakers` list. Segment boundaries are the
+the meeting. The NSC voice behind each label is in the manifest's `speakers` list, taken from
+`synthesis.json` (`voices[speaker_id].nsc_speaker`), which is the authoritative voice after any stage 4 reference
+swap. `meeting.json` keeps the voice stage 1 first assigned. Segment boundaries are the
 utterance WAV boundaries, which keep at most `voice.trim_pad_s` (50 ms) of silence at each end.
 
 ## Transcript (`labels/transcript.json`)
@@ -101,14 +103,17 @@ fields:
 - `text` uses the Singlish transcription convention from the design document (particles in parentheses, non-speech
   in square brackets, a trailing hyphen for a cut-off).
 - `text_norm` is lowercase with markup and punctuation removed. Particles and fillers stay as words. Use it for WER.
-- `words` lists every aligned word with absolute `start` and `end` times and the aligner's `score`. The words are the
-  `text_norm` words.
+- `words` lists every aligned word with absolute `start` and `end` times and the aligner's `score`, spelled as the
+  aligner returns it. The aligner drops punctuation and keeps apostrophes, so a word can differ from its `text_norm`
+  word only by case and by apostrophes at its edges (`students'` against `students`).
 - `truncated` is true when the speaker was cut off. Then `text` and `text_norm` keep only the words heard before
   `truncated_at`, `text` ends with a hyphen, and a word cut in the middle keeps its first part, ending at the cut.
 - `align_coverage` is the share of the turn's `text_norm` words that the aligner matched, in order.
 
 The aligner works on each utterance's dry audio, one utterance per request, so a request never holds more than one
-turn. `aligner` names the service that produced the word times.
+turn. The request's language is `zh` for an utterance with Chinese characters and `en` otherwise
+(`labels.align_language_cjk` and `labels.align_language`). `aligner` names the service that produced the word
+times.
 
 ## Manifest (`manifest.jsonl`)
 
@@ -162,8 +167,14 @@ Stage 7 also fails a meeting when the measured RT60 is off target, as described 
   canceller is modelled by its side effects only: local talkers are turned down while a remote participant speaks,
   and the start of each remote turn is attenuated. In small rooms the speakerphone is the laptop's own loudspeaker,
   placed 25 cm from its mic toward the laptop's owner.
-- Noise beds, keyboard typing and events are procedural (filtered noise and tones) until real recordings are added to
-  `datasets/sound-library/noise/index.yaml`. `render.json` names the source of every noise.
+- Noise comes from the noise library, `$SOUND_LIBRARY_DIR/noise/index.yaml` (default
+  `/home/user/code/datasets/sound-library/noise`), built by `data/sound_library/build_noise_library.py`. Kinds
+  without library clips (projector fan, chair, paper) are procedural (filtered noise and tones). `render.json` names
+  the source of every noise. The room-tone beds are DEMAND office recordings (CC BY-SA 3.0); they were recorded in a
+  real room, so they are mixed per capsule without a simulated impulse response. Keyboard, door and cup sounds come
+  from ESC-50, which is licensed CC BY-NC 3.0 as a whole (non-commercial use only), with each clip's Freesound
+  source and original licence in the index. Every clip passed a check for pitched, speech-like frames, so the noise
+  holds no unlabelled speech.
 - With the default turn-taking settings (30% of transitions overlapping by 0.1 to 1.0 s), the realised overlap is
   about 5 to 8% of speech time, which is under the 10 to 25% target. Stage 6 meets the target by lengthening the
   overlaps (up to three times, and never more than half of either turn) and then by letting more transitions overlap.

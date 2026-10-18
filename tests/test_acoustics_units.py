@@ -110,25 +110,57 @@ def test_a_laptop_speakerphone_is_kept_off_the_mic(cfg, splits):
 
 def test_procedural_noise_is_finite_audible_and_seeded():
     for kind in ("hvac", "projector_fan", "keyboard", "door", "chair", "cup", "paper"):
-        a, src = noise.make(kind, SR * 60, SR, np.random.default_rng(1), {})
-        b, _ = noise.make(kind, SR * 60, SR, np.random.default_rng(1), {})
-        assert src == "procedural" and np.all(np.isfinite(a)) and np.std(a) > 0
-        assert np.array_equal(a, b)
+        a = noise.make(kind, SR * 60, SR, np.random.default_rng(1), {})
+        b = noise.make(kind, SR * 60, SR, np.random.default_rng(1), {})
+        assert a.source == "procedural" and not a.recorded
+        assert np.all(np.isfinite(a.samples)) and np.std(a.samples) > 0
+        assert np.array_equal(a.samples, b.samples)
         if kind in noise.BEDS or kind == "keyboard":
-            assert len(a) == SR * 60
+            assert len(a.samples) == SR * 60
+
+
+def make_library(root, *, bed_channels: int = 4) -> None:
+    """A small noise library: a recorded multichannel bed, two keyboard clips and a door clip."""
+    import soundfile as sf
+
+    rng = np.random.default_rng(0)
+    for d in ("hvac", "keyboard", "door"):
+        (root / d).mkdir(parents=True, exist_ok=True)
+    sf.write(str(root / "hvac/bed.wav"), (0.01 * rng.standard_normal((SR * 3, bed_channels))).astype(np.float32),
+             22050, subtype="PCM_16")
+    for k in range(2):
+        sf.write(str(root / f"keyboard/k{k}.wav"), (0.2 * rng.standard_normal(SR)).astype(np.float32), SR)
+    sf.write(str(root / "door/d.wav"), (0.3 * rng.standard_normal(22050)).astype(np.float32), 44100)  # 0.5 s
+    (root / "index.yaml").write_text(
+        "clips:\n"
+        f"  - {{id: bed, kind: hvac, file: hvac/bed.wav, channels: {bed_channels}, recorded: true, licence: CC0}}\n"
+        "  - {id: k0, kind: keyboard, file: keyboard/k0.wav, licence: CC0}\n"
+        "  - {id: k1, kind: keyboard, file: keyboard/k1.wav, licence: CC0}\n"
+        "  - {id: d, kind: door, file: door/d.wav, licence: CC0}\n")
 
 
 def test_noise_library_clips_replace_procedural_ones(tmp_path):
-    from synthetics.backends.base import Audio
-
-    (tmp_path / "hvac").mkdir()
-    Audio(np.sin(np.arange(SR * 3) * 0.05).astype(np.float32) * 0.1, 22050).save(tmp_path / "hvac/a.wav")
-    (tmp_path / "index.yaml").write_text("clips:\n  - {id: hvac-a, kind: hvac, file: hvac/a.wav, source: test, "
-                                         "licence: CC0}\n")
+    make_library(tmp_path)
     lib = noise.load_library(tmp_path)
-    x, src = noise.make("hvac", SR * 10, SR, np.random.default_rng(0), lib)
-    assert src == "library:hvac-a" and len(x) == SR * 10 and np.std(x[-SR:]) > 0
-    assert noise.make("door", 0, SR, np.random.default_rng(0), lib)[1] == "procedural"
+    bed = noise.make("hvac", SR * 10, SR, np.random.default_rng(0), lib)
+    assert bed.source == "library:bed" and bed.recorded
+    assert bed.samples.shape == (4, SR * 10) and np.std(bed.samples[:, -SR:]) > 0, "looped to the meeting length"
+    kb = noise.make("keyboard", SR * 120, SR, np.random.default_rng(0), lib)
+    assert kb.samples.shape == (SR * 120,) and kb.source.startswith("library:") and not kb.recorded
+    assert 0.02 < np.mean(np.abs(kb.samples) > 0) < 0.9, "typing comes in sessions, with quiet between"
+    door = noise.make("door", 0, SR, np.random.default_rng(0), lib)
+    assert door.source == "library:d" and len(door.samples) == SR // 2  # resampled from 44.1 kHz
+    assert noise.make("chair", 0, SR, np.random.default_rng(0), lib).source == "procedural"
+
+
+def test_the_noise_library_lives_under_the_sound_library_root(cfg, monkeypatch, tmp_path):
+    from synthetics.stages.s7_acoustic import _library_root
+
+    monkeypatch.setenv("SOUND_LIBRARY_DIR", str(tmp_path))
+    assert _library_root(cfg.simulation) == tmp_path / "noise"
+    other = cfg.simulation.model_copy(update={"noise_library": tmp_path / "elsewhere"})
+    assert _library_root(other) == tmp_path / "elsewhere"
+    assert _library_root(cfg.simulation.model_copy(update={"noise_library": None})) is None
 
 
 def test_band_limit_removes_energy_above_the_cutoff():

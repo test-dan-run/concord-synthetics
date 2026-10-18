@@ -19,7 +19,7 @@ from ..backends.base import Audio
 from ..config.schema import LabelsConfig, Phase, Role, RunConfig, StageId
 from ..export.manifest import build_entry
 from ..export.rttm import read_rttm, write_rttm
-from ..export.transcript import utterance
+from ..export.transcript import align_language, utterance
 from .base import StageContext, StageResult
 
 RTTM_TOL_PER_SEGMENT = 0.0011  # millisecond rounding of start and duration
@@ -68,7 +68,8 @@ class LabelsStage:
             timings = []
             if turn.text_norm:
                 audio = Audio.load(ctx.paths.utterance(seg.turn_id))
-                timings = aligner.align(audio, turn.text_norm, language=cfg.labels.align_language)
+                lang = align_language(turn.text_norm, cfg.labels.align_language, cfg.labels.align_language_cjk)
+                timings = aligner.align(audio, turn.text_norm, language=lang)
             u = utterance(seg, turn, timings)
             utts.append(u)
             if any(w.start < seg.start - th.align_slack_s or w.end > seg.end + th.align_slack_s or w.end < w.start

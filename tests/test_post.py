@@ -27,7 +27,9 @@ from synthetics.orchestrator.status import StatusStore
 from synthetics.stages.runner import run_stage
 
 # hybrid meetings with presenters and a centre array, so one small run covers the remote and array paths
-RICH = {"acoustics.hybrid": {"small": {"dist": "bernoulli", "p": 1.0}, "large": {"dist": "bernoulli", "p": 1.0}},
+# the real sound library is left out, so these tests do not depend on what is downloaded
+HERMETIC = {"simulation.noise_library": None}
+RICH = {**HERMETIC, "acoustics.hybrid": {"small": {"dist": "bernoulli", "p": 1.0}, "large": {"dist": "bernoulli", "p": 1.0}},
         "seating.presenters.presentation": {"small": {"dist": "bernoulli", "p": 1.0},
                                             "large": {"dist": "bernoulli", "p": 1.0}},
         "acoustics.mic.centre_array": {"dist": "bernoulli", "p": 1.0}}
@@ -186,7 +188,7 @@ def test_a_second_post_run_is_all_cache_hits_with_no_lease(post):
 
 
 def test_stage8_defers_without_the_aligner_and_gates_bad_alignments(tmp_path):
-    rd, cfg = fake_run(tmp_path, n=1, seed=3)
+    rd, cfg = fake_run(tmp_path, n=1, seed=3, **HERMETIC)
     run_to_phase_c(rd, cfg)
     mid = RunPaths(rd).meeting_ids()[0]
     s6, s7, s8 = (post_stages()[s] for s in (StageId.ASSEMBLE, StageId.ACOUSTIC, StageId.LABELS))
@@ -214,7 +216,7 @@ def test_stage8_defers_without_the_aligner_and_gates_bad_alignments(tmp_path):
 
 
 def test_changing_render_settings_reruns_only_stages_7_and_8(tmp_path):
-    rd, cfg = fake_run(tmp_path, n=1, seed=3)
+    rd, cfg = fake_run(tmp_path, n=1, seed=3, **HERMETIC)
     run_to_phase_c(rd, cfg)
     sched = PhaseScheduler(rd, cfg)
     ids = RunPaths(rd).meeting_ids()
@@ -243,7 +245,7 @@ def test_changing_render_settings_reruns_only_stages_7_and_8(tmp_path):
 def test_changing_sampled_acoustics_reruns_only_stages_7_and_8(tmp_path):
     from synthetics.config.distributions import Uniform
 
-    rd, cfg = fake_run(tmp_path, n=1, seed=3)
+    rd, cfg = fake_run(tmp_path, n=1, seed=3, **HERMETIC)
     PhaseScheduler(rd, cfg).run()
     snr = cfg.acoustics.snr_db.model_copy(update={"small": Uniform(lo=0, hi=5), "large": Uniform(lo=0, hi=5)})
     cfg2 = cfg.model_copy(update={"acoustics": cfg.acoustics.model_copy(update={"snr_db": snr})})
@@ -284,3 +286,41 @@ def test_cut_text_keeps_the_heard_words_with_a_hyphen():
     assert cut_text(t, 1) == "Ok-"
     assert cut_text("We should-", 2) == "We should-"
     assert cut_text(t, 0) == ""
+
+
+def test_library_noise_reaches_the_mixture(tmp_path):
+    from test_acoustics_units import make_library
+
+    lib = tmp_path / "lib"
+    make_library(lib)
+    over = {"simulation.noise_library": str(lib),
+            "room_classes.ratio": {"dist": "categorical", "weights": {"small": 1.0, "large": 0.0}},
+            "dynamics.duration_min": {"small": {"dist": "uniform", "lo": 4, "hi": 4},
+                                      "large": {"dist": "uniform", "lo": 4, "hi": 4}},
+            "acoustics.keyboard": {"small": {"dist": "bernoulli", "p": 1.0}, "large": {"dist": "bernoulli", "p": 1.0}}}
+    rd, cfg = fake_run(tmp_path / "run", n=1, seed=3, **over)
+    ids = run_to_phase_c(rd, cfg)
+    assert ids
+    b = Backends(cfg.backends)
+    assert run_stage(post_stages()[StageId.ASSEMBLE], rd, ids[0], cfg, b).state == "pass"
+    assert run_stage(post_stages()[StageId.ACOUSTIC], rd, ids[0], cfg, b).state == "pass"
+    r = read_model(MeetingPaths(rd, ids[0]).render, AcousticRender)
+    sources = {n.kind: n.source for n in r.noise}
+    assert sources["hvac"] == "library:bed" and sources["keyboard"].startswith("library:k")
+    assert r.snr_db == pytest.approx(r.snr_target_db, abs=0.05)
+
+
+def test_aligner_words_and_language_follow_the_service_contract():
+    from synthetics.artifacts.labels import Segment
+    from synthetics.artifacts.models import Turn
+    from synthetics.export.transcript import align_language, utterance
+
+    assert align_language("then 他 会 教 ok", "en", "zh") == "zh"
+    assert align_language("we go makan first", "en", "zh") == "en"
+    turn = Turn(turn_id="t0001", speaker_id="S01", interaction="normal", text="Don't worry, the students' work (lah).",
+                text_norm="don't worry the students work lah")
+    seg = Segment(turn_id="t0001", speaker_id="S01", kind="normal", start=10.0, end=13.0)
+    words = [WordTiming(w, 0.1 + 0.4 * i, 0.4 + 0.4 * i, 0.9)
+             for i, w in enumerate(["Don't", "worry", "the", "students'", "work", "lah"])]
+    u = utterance(seg, turn, words)
+    assert u.align_coverage == 1.0 and u.words[0].word == "Don't" and u.words[0].start == pytest.approx(10.1)

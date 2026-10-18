@@ -392,7 +392,7 @@ class SimulationConfig(_M):
     agc_release_s: float = 3.0
     agc_gate_db: float = -45.0  # frames below this hold the gain (dBFS, after the fixed gain): quiet rooms do not pump
     # noise (the sampled SNR covers the beds; keyboard and events sit relative to speech)
-    noise_library: Path | None = None  # e.g. ../../../datasets/sound-library/noise (app-relative); None = procedural
+    noise_library: Path | None = Path("noise")  # under $SOUND_LIBRARY_DIR (or absolute); None = procedural only
     bed_balance_db: Uniform = Uniform(lo=-6.0, hi=3.0)  # projector fan relative to HVAC
     event_level_db: Uniform = Uniform(lo=-12.0, hi=3.0)
     keyboard_level_db: Uniform = Uniform(lo=-25.0, hi=-12.0)
@@ -407,7 +407,8 @@ class SimulationConfig(_M):
 class LabelsConfig(_M):
     """Stage 8 (M8). Gates live in `thresholds`."""
 
-    align_language: str = "en"
+    align_language: str = "en"  # the aligner's LANGUAGE for most utterances
+    align_language_cjk: str = "zh"  # for utterances with Chinese characters (code-switched Mandarin)
 
 
 # ---------------------------------------------------------------- the run

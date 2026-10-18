@@ -20,6 +20,21 @@ from ..text.singlish import text_norm
 TRAILING_PUNCT = re.compile(r"[\s.,!?;:…\"”’]+$")
 
 
+CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
+
+
+def align_language(text_norm: str, default: str, cjk: str) -> str:
+    """The aligner's LANGUAGE for one utterance: `cjk` when it holds Chinese characters, else `default`. The
+    aligner takes en, zh and other codes, but not Japanese, which our convention never produces."""
+    return cjk if CJK.search(text_norm) else default
+
+
+def norm_word(w: str) -> str:
+    """An aligner word as a text_norm word: the aligner drops punctuation but keeps apostrophes, and text_norm strips
+    them at word edges (it keeps them inside, as in "don't")."""
+    return w.lower().strip("-'’")
+
+
 def matches(expected: list[str], aligned: list[str]) -> dict[int, int]:
     """Aligned word index -> expected word index, for the words matched in order."""
     sm = difflib.SequenceMatcher(a=expected, b=aligned, autojunk=False)
@@ -47,7 +62,7 @@ def cut_text(text: str, n_words: int) -> str:
 
 def utterance(seg: Segment, turn: Turn, timings: list[WordTiming]) -> TranscriptUtterance:
     expected = turn.text_norm.split()
-    aligned = [t.word.lower() for t in timings]
+    aligned = [norm_word(t.word) for t in timings]
     matched = matches(expected, aligned)
     cov = len(matched) / len(expected) if expected else 1.0
     words = [Word(word=t.word, start=round(seg.start + t.start, 4), end=round(seg.start + t.end, 4),

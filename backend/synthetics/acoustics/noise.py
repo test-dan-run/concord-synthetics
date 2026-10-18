@@ -1,19 +1,22 @@
 """Noise for stage 7: stationary beds (HVAC, projector fan), keyboard typing and short events (door, chair,
 cup, paper).
 
-Every kind has a procedural generator, so stage 7 never waits on data. When the sound library
-(`SimulationConfig.noise_library`, `<dir>/index.yaml`) lists real clips of a kind, one of them is used instead:
-beds are looped with a crossfade to the meeting length, events are used as they are. Clips are resampled to the
-run rate and mixed down to mono.
+Every kind has a procedural generator, so stage 7 never waits on data. When the noise library
+(`<SOUND_LIBRARY_DIR>/noise/index.yaml`, see `SimulationConfig.noise_library`) lists real clips of a kind, one
+of them is used instead. Beds are looped with a crossfade to the meeting length; a bed marked `recorded: true` was
+recorded in a real room, keeps its channels and is mixed without a simulated impulse response. Keyboard clips are
+strung into typing sessions; events are used as they are. Clips are resampled to the run rate.
 
-    # index.yaml
+    # index.yaml (built by data/sound_library/build_noise_library.py)
     clips:
-      - {id: hvac-office-01, kind: hvac, file: hvac/office_01.wav, source: <url>, licence: CC0}
+      - {id: demand-ooffice-a, kind: hvac, file: hvac/demand_ooffice_a.wav, channels: 4, recorded: true,
+         source: <url>, licence: CC BY-SA 3.0}
 """
 
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,11 +24,15 @@ import numpy as np
 import yaml
 from scipy import signal
 
-from ..backends.base import Audio
-
 BEDS = ("hvac", "projector_fan")
 EVENTS = ("door", "chair", "cup", "paper")
 CHUNK_S = 60.0
+DEFAULT_SOUND_LIBRARY = Path("/home/user/code/datasets/sound-library")
+
+
+def sound_library_root() -> Path:
+    """Root of both sound libraries (noise here, nonlexical clips for stage 4)."""
+    return Path(os.environ.get("SOUND_LIBRARY_DIR") or DEFAULT_SOUND_LIBRARY)
 
 
 @dataclass(frozen=True)
@@ -35,6 +42,15 @@ class LibraryClip:
     path: Path
     source: str
     licence: str
+    channels: int = 1
+    recorded: bool = False  # holds its own room acoustics: mixed without a simulated impulse response
+
+
+@dataclass
+class NoiseSignal:
+    samples: np.ndarray  # (n,) or, for a recorded multichannel bed, (channels, n)
+    source: str  # procedural | library:<clip id>
+    recorded: bool = False
 
 
 def load_library(root: Path | None) -> dict[str, list[LibraryClip]]:
@@ -44,7 +60,7 @@ def load_library(root: Path | None) -> dict[str, list[LibraryClip]]:
     out: dict[str, list[LibraryClip]] = {}
     for c in data.get("clips") or []:
         clip = LibraryClip(str(c["id"]), str(c["kind"]), Path(root) / c["file"], str(c.get("source", "")),
-                           str(c.get("licence", "")))
+                           str(c.get("licence", "")), int(c.get("channels", 1)), bool(c.get("recorded", False)))
         out.setdefault(clip.kind, []).append(clip)
     return out
 
@@ -104,22 +120,52 @@ def keystroke(sr: int, rng: np.random.Generator) -> np.ndarray:
     return (y * rng.uniform(0.5, 1.0)).astype(np.float32)
 
 
-def keyboard(n: int, sr: int, rng: np.random.Generator, *, sessions_per_min: float = 2.0) -> np.ndarray:
-    """Typing sessions (2-15 s, 4-8 keys a second) at random times, the first within about 15 s."""
-    x = np.zeros(n, np.float32)
-    dur = n / sr
+def typing_sessions(dur: float, rng: np.random.Generator, sessions_per_min: float = 2.0):
+    """(start, length) of typing sessions (2-15 s) at random times, the first within about 15 s."""
     t = rng.exponential(15.0)
     while t < dur:
         length = rng.uniform(2.0, 15.0)
+        yield t, min(length, dur - t)
+        t += length + rng.exponential(60.0 / sessions_per_min)
+
+
+def keyboard(n: int, sr: int, rng: np.random.Generator) -> np.ndarray:
+    """Procedural typing sessions, 4-8 keys a second."""
+    x = np.zeros(n, np.float32)
+    for t, length in typing_sessions(n / sr, rng):
         rate = rng.uniform(4.0, 8.0)
         k = t
-        while k < min(t + length, dur - 0.1):
+        while k < t + length - 0.1:
             ks = keystroke(sr, rng)
             i = int(k * sr)
             x[i:i + len(ks)] += ks[: n - i]
             k += rng.exponential(1.0 / rate) + 0.03
-        t += length + rng.exponential(60.0 / sessions_per_min)
     return x
+
+
+def keyboard_from_clips(n: int, sr: int, rng: np.random.Generator, clips: list[LibraryClip]) -> tuple[np.ndarray, str]:
+    """Typing sessions filled with library clips, back to back with short pauses."""
+    x = np.zeros(n, np.float32)
+    used: set[str] = set()
+    cache: dict[str, np.ndarray] = {}
+    for t, length in typing_sessions(n / sr, rng):
+        k = t
+        while k < t + length:
+            clip = clips[int(rng.integers(len(clips)))]
+            if clip.id not in cache:
+                cache[clip.id] = _library_audio(clip, sr)[0]
+            c = cache[clip.id] * np.float32(rng.uniform(0.6, 1.0))
+            i = int(k * sr)
+            m = min(len(c), n - i, int((t + length - k) * sr) + 1)
+            if m <= 0:
+                break
+            piece = c[:m].copy()
+            fade = min(m, int(0.02 * sr))
+            piece[-fade:] *= np.linspace(1.0, 0.0, fade, dtype=np.float32)
+            x[i:i + m] += piece
+            used.add(clip.id)
+            k += m / sr + rng.uniform(0.2, 1.5)
+    return x, "library:" + ",".join(sorted(used)) if used else "library:"
 
 
 def event(kind: str, sr: int, rng: np.random.Generator) -> np.ndarray:
@@ -156,41 +202,56 @@ def event(kind: str, sr: int, rng: np.random.Generator) -> np.ndarray:
 
 
 def _library_audio(clip: LibraryClip, sr: int) -> np.ndarray:
-    return Audio.load(clip.path).resample(sr).samples
+    """(channels, n) float32 at `sr`."""
+    import soundfile as sf
+    import soxr
+
+    x, clip_sr = sf.read(str(clip.path), dtype="float32", always_2d=True)
+    if clip_sr != sr:
+        x = soxr.resample(x, clip_sr, sr).astype(np.float32)
+    return np.ascontiguousarray(x.T)
 
 
 def loop_to(x: np.ndarray, n: int, sr: int, xfade_s: float = 0.5) -> np.ndarray:
-    """Repeat a clip to `n` samples with crossfades."""
-    xf = min(int(xfade_s * sr), len(x) // 4)
-    if len(x) >= n:
-        return x[:n].copy()
-    out = np.zeros(n, np.float32)
+    """Repeat a clip ((n,) or (channels, n)) to `n` samples along its last axis, with crossfades."""
+    x2 = np.atleast_2d(x)
+    length = x2.shape[1]
+    if length >= n:
+        out = x2[:, :n].copy()
+        return out if x.ndim == 2 else out[0]
+    xf = min(int(xfade_s * sr), length // 4)
+    out = np.zeros((x2.shape[0], n), np.float32)
     ramp = np.linspace(0.0, 1.0, xf, dtype=np.float32) if xf else np.zeros(0, np.float32)
     pos = 0
     while pos < n:
-        seg = x.copy()
+        seg = x2.copy()
         if xf and pos:
-            seg[:xf] *= ramp
+            seg[:, :xf] *= ramp
         if xf:
-            seg[-xf:] *= ramp[::-1]
-        m = min(len(seg), n - pos)
-        out[pos:pos + m] += seg[:m]
-        pos += len(seg) - xf
-    return out
+            seg[:, -xf:] *= ramp[::-1]
+        m = min(length, n - pos)
+        out[:, pos:pos + m] += seg[:, :m]
+        pos += length - xf
+    return out if x.ndim == 2 else out[0]
 
 
-def make(kind: str, n: int, sr: int, rng: np.random.Generator,
-         library: dict[str, list[LibraryClip]]) -> tuple[np.ndarray, str]:
-    """(mono signal, source) for a bed (`n` samples) or an event (its natural length; `n` ignored)."""
+def make(kind: str, n: int, sr: int, rng: np.random.Generator, library: dict[str, list[LibraryClip]]) -> NoiseSignal:
+    """A bed or keyboard track (`n` samples) or an event (its natural length; `n` ignored)."""
     clips = library.get(kind, [])
+    if clips and kind == "keyboard":
+        x, src = keyboard_from_clips(n, sr, rng, clips)
+        return NoiseSignal(x, src)
     if clips:
         clip = clips[int(rng.integers(len(clips)))]
         x = _library_audio(clip, sr)
-        return (loop_to(x, n, sr) if kind in BEDS else x), f"library:{clip.id}"
+        if kind in BEDS:
+            x = loop_to(x if clip.recorded else x.mean(axis=0), n, sr)
+            return NoiseSignal(x, f"library:{clip.id}", recorded=clip.recorded)
+        return NoiseSignal(x.mean(axis=0), f"library:{clip.id}")
     if kind == "hvac":
-        return hvac(n, sr, rng), "procedural"
+        return NoiseSignal(hvac(n, sr, rng), "procedural")
     if kind == "projector_fan":
-        return projector_fan(n, sr, rng), "procedural"
+        return NoiseSignal(projector_fan(n, sr, rng), "procedural")
     if kind == "keyboard":
-        return keyboard(n, sr, rng), "procedural"
-    return event(kind, sr, rng), "procedural"
+        return NoiseSignal(keyboard(n, sr, rng), "procedural")
+    return NoiseSignal(event(kind, sr, rng), "procedural")

@@ -216,10 +216,22 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
     for i, nz in enumerate(noise_plan):
         if nz.kind not in noise.BEDS:
             continue
-        x, nz.source = noise.make(nz.kind, n_total, sr, rng, library)
-        x *= 10 ** (nz.level_db / 20) / (np.std(x) + 1e-12)
-        add_convolved(noise_buf, x, rirs[noise_poses[i].key()], 0)
-        del x
+        sig = noise.make(nz.kind, n_total, sr, rng, library)
+        nz.source = sig.source
+        x = sig.samples
+        h = rirs[noise_poses[i].key()]
+        # beds sit at `level_db` relative to each other at the mic: a simulated bed's power there is about its
+        # source power times the impulse response's energy; a recorded bed is already as heard in a room
+        at_mic = float(np.mean(x.astype(np.float64) ** 2)) * (1.0 if sig.recorded else float(np.sum(h[0] ** 2)))
+        x *= np.float32(10 ** (nz.level_db / 20) / math.sqrt(at_mic + 1e-20))
+        if sig.recorded:
+            x2 = np.atleast_2d(x)
+            for k in range(n_mics):
+                noise_buf[k] += x2[k % x2.shape[0]]
+            del x2
+        else:
+            add_convolved(noise_buf, x, h, 0)
+        del x, sig
     p_bed = mean_power(noise_buf)
     snr_target = m.acoustics.snr_db
     snr = math.inf
@@ -231,11 +243,13 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
         if nz.kind in noise.BEDS:
             continue
         if nz.kind == "keyboard":
-            x, nz.source = noise.make("keyboard", n_total, sr, rng, library)
+            sig = noise.make("keyboard", n_total, sr, rng, library)
             s0 = 0
         else:
-            x, nz.source = noise.make(nz.kind, 0, sr, rng, library)
+            sig = noise.make(nz.kind, 0, sr, rng, library)
             s0 = int(round(nz.start * sr))
+        nz.source, x = sig.source, sig.samples
+        if nz.kind != "keyboard":
             nz.end = round(nz.start + len(x) / sr, 3)
         h = rirs[noise_poses[i].key()]
         ref = np.zeros((1, len(x) + h.shape[1] - 1), np.float32)
@@ -296,12 +310,11 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
                           noise=noise_plan, remote=remote_info, device=dev)
 
 
-def _library_root(sim: SimulationConfig):
+def _library_root(sim: SimulationConfig) -> Path | None:
+    """`noise_library` resolved against the sound library root ($SOUND_LIBRARY_DIR); None: procedural only."""
     if sim.noise_library is None:
         return None
-    from ..orchestrator.run import app_path
-
-    return app_path(sim.noise_library)
+    return noise.sound_library_root() / sim.noise_library  # an absolute path stays as it is
 
 
 # ---------------------------------------------------------------- the stage
