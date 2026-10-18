@@ -345,10 +345,34 @@ class VoiceConfig(_M):
 
 
 class AssemblyConfig(_M):
-    """Stage 6 (M6). Turn-taking distributions live in `turn_taking`."""
+    """Stage 6 (M6). Turn-taking distributions live in `turn_taking`; these settle how they are realised."""
 
     lead_in_s: float = 1.0  # silence before the first segment
     tail_s: float = 1.0  # silence after the last segment
+    min_self_gap_s: float = 0.15  # between two segments of one speaker (no one overlaps their own speech)
+    interrupt_at: Uniform = Uniform(lo=0.35, hi=0.8)  # interruption start, as a share of the floor turn
+    interrupt_min_before_s: float = 0.6  # the interrupted speaker says at least this much
+    interrupt_min_tail_s: float = 0.2  # the cut lands at least this long before the utterance would end
+    backchannel_at: Uniform = Uniform(lo=0.15, hi=0.85)  # position inside the host turn
+    side_start_at: Uniform = Uniform(lo=0.1, hi=0.6)  # first side turn, as a share of the host turn
+    side_gap: LogNormal = LogNormal(median=0.25, sigma=0.5, cap=1.0)  # between side-conversation turns
+    # The meeting's overlap target (`turn_taking.overlap_target`) is met by scaling the overlap leads of
+    # overlap_start transitions (up to `max_lead_scale`, still capped by `turn_taking.overlap_max_frac`), and,
+    # when that is not enough, by letting more normal transitions overlap (`convert_transitions`).
+    overlap_control: bool = True
+    max_lead_scale: float = 3.0
+    convert_transitions: bool = True
+    fade_s: float = 0.01  # fade-out at a truncation point
+    thin_backchannels: bool = True  # keep the planned backchannel rate when the meeting comes out shorter
+
+
+class SurfaceMaterials(_M):
+    """meeting.json surface material -> pyroomacoustics database entry (frequency-dependent absorption)."""
+
+    walls: dict[str, str] = Field(default_factory=lambda: {"glass": "glass_window", "plasterboard": "plasterboard"})
+    floor: dict[str, str] = Field(default_factory=lambda: {"carpet": "carpet_hairy", "vinyl": "linoleum_on_concrete"})
+    ceiling: dict[str, str] = Field(default_factory=lambda: {"acoustic_tile": "ceiling_fissured_tile",
+                                                             "plasterboard": "ceiling_plasterboard"})
 
 
 class SimulationConfig(_M):
@@ -356,12 +380,51 @@ class SimulationConfig(_M):
 
     ism_max_order: int = 3  # with ray tracing for the late tail
     ray_tracing: list[RoomClass] = Field(default_factory=lambda: ["large"])
+    ism_order_cap: int = 30  # rooms without ray tracing: ISM order reaches the T20 fit range, up to this cap
+    materials: SurfaceMaterials = SurfaceMaterials()
+    scattering: float = 0.25  # furniture and people; also makes the decay closer to exponential
+    absorption_min: float = 0.01  # after scaling to the target RT60
+    absorption_max: float = 0.95
+    rt_n_rays: int | None = None  # pyroomacoustics default from the room size
+    rt_receiver_radius: float = 0.5
+    rir_tail_factor: float = 1.1  # impulse responses are cut at this many target RT60s
+    directivity_p: float = 0.7  # talker directivity, cardioid family p (1 omni, 0.5 cardioid): about -8 dB behind
+    calibration_iters: int = 5
+    rt60_calibration_tol: float = 0.05  # relative; absorption is rescaled until the probe is this close
+    rt60_tolerance: float = 0.15  # relative; stage 7 fails when the speakers' median measured RT60 is further off
+    calibration_probes: int = 4  # talker positions whose median RT60 is calibrated
+    facing_step_deg: float = 5.0  # facing and presenter drift are quantised, bounding the impulse responses
+    drift_grid_m: float = 0.1
+    # levels (dBFS of active speech at the source; the room then attenuates by distance, never normalised)
+    speech_level_db: float = -20.0
+    speaker_level_sd_db: float = 2.0  # per talker
+    utterance_level_sd_db: float = 1.0
+    backchannel_offset_db: float = -3.0
+    presenter_offset_db: float = 2.0  # standing, projecting to the room
+    output_level_db: float = -26.0  # speech level of the recording when the device has no AGC
+    agc_target_db: float = -23.0
+    agc_max_gain_db: float = 20.0
+    agc_attack_s: float = 0.5
+    agc_release_s: float = 3.0
+    agc_gate_db: float = -45.0  # frames below this hold the gain (dBFS, after the fixed gain): quiet rooms do not pump
+    # noise (the sampled SNR covers the beds; keyboard and events sit relative to speech)
+    noise_library: Path | None = Path("noise")  # under $SOUND_LIBRARY_DIR (or absolute); None = procedural only
+    bed_balance_db: Uniform = Uniform(lo=-6.0, hi=3.0)  # projector fan relative to HVAC
+    event_level_db: Uniform = Uniform(lo=-12.0, hi=3.0)
+    keyboard_level_db: Uniform = Uniform(lo=-25.0, hi=-12.0)
+    # hybrid meetings
+    speaker_mic_gap_m: float = 0.25  # loudspeaker to mic at least (a laptop's speakers sit by its keyboard)
+    far_end_narrowband_p: float = 0.3
+    far_end_kbps: IntUniform = IntUniform(lo=12, hi=24)
+    aec_duck_db: Uniform = Uniform(lo=3.0, hi=10.0)
+    aec_onset_s: Uniform = Uniform(lo=0.05, hi=0.2)
 
 
 class LabelsConfig(_M):
     """Stage 8 (M8). Gates live in `thresholds`."""
 
-    align_language: str = "en"
+    align_language: str = "en"  # the aligner's LANGUAGE for most utterances
+    align_language_cjk: str = "zh"  # for utterances with Chinese characters (code-switched Mandarin)
 
 
 # ---------------------------------------------------------------- the run

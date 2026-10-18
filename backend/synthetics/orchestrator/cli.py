@@ -101,15 +101,15 @@ def _scheduler(run: str, keep_services: bool):
 
 @app.command()
 def run(run: RunOpt,
-        until: Annotated[int, typer.Option(help="last stage to run (1-3 implemented)")] = 3,
-        only: Annotated[str | None, typer.Option(help="one phase only: CPU, A, B or B2")] = None,
+        until: Annotated[int, typer.Option(help="last stage to run (1-8)")] = 8,
+        only: Annotated[str | None, typer.Option(help="one phase only: CPU, A, B, B2, C or D")] = None,
         keep_services: Annotated[bool, typer.Option(help="leave leased services running afterwards")] = False):
-    """Run the pipeline phase by phase (stages 1-3 so far)."""
+    """Run the pipeline phase by phase."""
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    sched.run(until=StageId(min(until, 3)), only=Phase(only) if only else None)
-    typer.echo(json.dumps(summarise(rd, StageId(min(until, 3))), indent=2))
+    sched.run(until=StageId(until), only=Phase(only) if only else None)
+    typer.echo(json.dumps(summarise(rd, StageId(until)), indent=2))
 
 
 @app.command()
@@ -118,8 +118,8 @@ def resume(run: RunOpt, keep_services: Annotated[bool, typer.Option()] = False):
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    sched.run()
-    typer.echo(json.dumps(summarise(rd), indent=2))
+    sched.run(until=StageId.LABELS)
+    typer.echo(json.dumps(summarise(rd, StageId.LABELS), indent=2))
 
 
 @app.command()
@@ -129,13 +129,41 @@ def stage(n: Annotated[int, typer.Argument(help="stage number")], run: RunOpt,
     """Debug one stage on one meeting (services must already be up)."""
     from ..backends.registry import Backends
     from ..stages.runner import run_stage
+    from .phase_c import stages as phase_c_stages
+    from .phase_post import post_stages
     from .run import load_run
     from .scheduler import stages
 
     rd = _run_dir(run)
     cfg, _ = load_run(rd)
-    out = run_stage(stages()[StageId(n)], rd, meeting, cfg, Backends(cfg.backends), force=force)
+    every = {**stages(), **phase_c_stages(), **post_stages()}
+    out = run_stage(every[StageId(n)], rd, meeting, cfg, Backends(cfg.backends), force=force)
     typer.echo(f"{out.meeting_id} stage {int(out.stage)}: {out.state} {out.detail}")
+
+
+@app.command()
+def post(run: RunOpt,
+         until: Annotated[int, typer.Option(help="last stage to run (6-8)")] = 8,
+         only: Annotated[str | None, typer.Option(help="one phase only: CPU (stages 6-7) or D (stage 8)")] = None,
+         keep_services: Annotated[bool, typer.Option(help="leave leased services running afterwards")] = False):
+    """Stages 6-8 only, on meetings that passed phase C, then the run manifest."""
+    from ..artifacts.paths import RunPaths
+    from .phase_post import run_post
+    from .scheduler import RunReport, summarise
+
+    rd, sched = _scheduler(run, keep_services)
+    run_post(sched, RunPaths(rd).meeting_ids(), RunReport(), until=StageId(until), only=Phase(only) if only else None)
+    typer.echo(json.dumps(summarise(rd, StageId(until)), indent=2))
+
+
+@app.command()
+def manifest(run: RunOpt):
+    """Rebuild manifest.jsonl from the meetings' labels/manifest_entry.json (stage 8 passed)."""
+    from ..export.manifest import write_run_manifest
+
+    path = write_run_manifest(_run_dir(run))
+    n = sum(1 for line in path.read_text().splitlines() if line.strip())
+    typer.echo(f"wrote {path}: {n} meetings")
 
 
 @app.command()
@@ -147,7 +175,7 @@ def status(run: RunOpt, meetings: Annotated[bool, typer.Option(help="one line pe
 
     rd = _run_dir(run)
     _, h = load_run(rd)
-    s = summarise(rd)
+    s = summarise(rd, StageId.LABELS)
     typer.echo(f"run {rd.name} · config {h}")
     typer.echo(json.dumps(s, indent=2))
     if meetings:

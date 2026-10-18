@@ -29,13 +29,21 @@ lint:
 init run_id n="20" seed="1" *flags:
     {{cli}} init-run {{run_id}} --n {{n}} --seed {{seed}} {{flags}}
 
-# run the pipeline phase by phase (stages 1-3 so far); resumable
+# run the pipeline phase by phase (stages 1-8); resumable
 run run_id *flags:
     {{cli}} run -r {{run_id}} {{flags}}
 
 # one stage on one meeting, for debugging (services must be up)
 stage n run_id meeting *flags:
     {{cli}} stage {{n}} -r {{run_id}} -m {{meeting}} {{flags}}
+
+# stages 6-8 (assembly, acoustics, labels) on meetings that passed phase C, then manifest.jsonl
+post run_id *flags:
+    {{cli}} post -r {{run_id}} {{flags}}
+
+# rebuild a run's manifest.jsonl from its per-meeting entries
+manifest run_id:
+    {{cli}} manifest -r {{run_id}}
 
 # per-stage state counts and the regeneration rate
 status run_id *flags:

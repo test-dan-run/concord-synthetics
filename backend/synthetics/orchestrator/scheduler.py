@@ -1,9 +1,11 @@
-"""Phase scheduler (§3.5), stages 1-3 for now.
+"""Phase scheduler (§3.5).
 
 1. stage 1 for every meeting (CPU)
 2. rounds: lease A -> stage 2 for pending meetings; lease B -> stage 3 (primary judge); lease B2 -> stage 3 for
    meetings waiting on the tie-breaker; failed scripts go back to A with feedback; after `retries.script_rounds`
    rounds an unresolved script is dropped.
+3. lease C -> stages 4 and 5 with re-synthesis inline (`phase_c.py`)
+4. stages 6 and 7 for each meeting (CPU), then lease D -> stage 8, then manifest.jsonl (`phase_post.py`)
 
 Everything is sequential: one meeting at a time and one request at a time.
 """
@@ -22,6 +24,8 @@ from ..backends.registry import Backends, check_endpoints
 from ..config.schema import Phase, Role, RunConfig, StageId
 from ..stages.runner import RunOutcome, is_fresh, run_stage
 from .lease import GpuLease, LeaseError, check_vram
+from .phase_c import run_phase_c
+from .phase_post import run_post
 from .status import StatusStore
 
 log = logging.getLogger("synthetics.scheduler")
@@ -154,6 +158,9 @@ class PhaseScheduler:
                     self._drop(m, max_rounds)
             if not [m for m in retry if not self._exhausted(m)]:
                 break
+        if until >= StageId.VOICE and want(Phase.C):
+            run_phase_c(self, ids, report)
+        run_post(self, ids, report, until=until, only=only)
         return report
 
     def _exhausted(self, meeting_id: str) -> bool:

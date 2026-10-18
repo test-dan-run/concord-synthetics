@@ -112,6 +112,10 @@ class MeetingPaths:
         return self.dir / "mixture_mc.wav"
 
     @property
+    def render(self) -> Path:
+        return self.dir / "render.json"
+
+    @property
     def labels_dir(self) -> Path:
         return self.dir / "labels"
 
@@ -122,6 +126,10 @@ class MeetingPaths:
     @property
     def transcript(self) -> Path:
         return self.labels_dir / "transcript.json"
+
+    @property
+    def manifest_entry(self) -> Path:
+        return self.labels_dir / "manifest_entry.json"
 
     @property
     def status(self) -> Path:
