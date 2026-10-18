@@ -34,10 +34,16 @@ class Segment(_A):
 class TimelineStats(_A):
     duration: float
     speech_time: float  # sum of segment lengths
-    overlap_share: float  # share of speech time with two or more speakers active
+    overlap_share: float  # share of speech time with two or more speakers active (overlap_time / voiced_time)
     backchannels_per_min: float
     interruption_share: float  # interruptions / speaker changes
     long_pauses: int
+    voiced_time: float = 0.0  # time with at least one speaker active
+    overlap_time: float = 0.0  # time with two or more speakers active
+    overlap_target: float | None = None  # the meeting's sampled target (turn_taking.overlap_target)
+    speaker_changes: int = 0  # main-turn transitions between different speakers
+    interruptions: int = 0  # realised: the floor speaker was cut off
+    backchannels: int = 0
 
 
 class Timeline(_A):
@@ -46,6 +52,7 @@ class Timeline(_A):
     sample_rate: int
     segments: list[Segment]  # sorted by start
     stats: TimelineStats
+    dropped_turns: list[str] = Field(default_factory=list)  # script turns left out (thinned backchannels)
 
 
 # ---------------------------------------------------------------- labels/transcript.json (stage 8)

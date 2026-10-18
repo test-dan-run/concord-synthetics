@@ -14,6 +14,8 @@ dependencies = [
     "openai>=2.0",
     "jiwer>=4.0",
     "aicore[oip]",
+    "scipy>=1.18.1",
+    "pyroomacoustics>=0.10.1",
 ]
 
 [project.scripts]

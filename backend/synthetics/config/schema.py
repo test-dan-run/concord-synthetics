@@ -329,10 +329,25 @@ class VoiceConfig(_M):
 
 
 class AssemblyConfig(_M):
-    """Stage 6 (M6). Turn-taking distributions live in `turn_taking`."""
+    """Stage 6 (M6). Turn-taking distributions live in `turn_taking`; these settle how they are realised."""
 
     lead_in_s: float = 1.0  # silence before the first segment
     tail_s: float = 1.0  # silence after the last segment
+    min_self_gap_s: float = 0.15  # between two segments of one speaker (no one overlaps their own speech)
+    interrupt_at: Uniform = Uniform(lo=0.35, hi=0.8)  # interruption start, as a share of the floor turn
+    interrupt_min_before_s: float = 0.6  # the interrupted speaker says at least this much
+    interrupt_min_tail_s: float = 0.2  # the cut lands at least this long before the utterance would end
+    backchannel_at: Uniform = Uniform(lo=0.15, hi=0.85)  # position inside the host turn
+    side_start_at: Uniform = Uniform(lo=0.1, hi=0.6)  # first side turn, as a share of the host turn
+    side_gap: LogNormal = LogNormal(median=0.25, sigma=0.5, cap=1.0)  # between side-conversation turns
+    # The meeting's overlap target (`turn_taking.overlap_target`) is met by scaling the overlap leads of
+    # overlap_start transitions (up to `max_lead_scale`, still capped by `turn_taking.overlap_max_frac`), and,
+    # when that is not enough, by letting more normal transitions overlap (`convert_transitions`).
+    overlap_control: bool = True
+    max_lead_scale: float = 3.0
+    convert_transitions: bool = True
+    fade_s: float = 0.01  # fade-out at a truncation point
+    thin_backchannels: bool = True  # keep the planned backchannel rate when the meeting comes out shorter
 
 
 class SimulationConfig(_M):
