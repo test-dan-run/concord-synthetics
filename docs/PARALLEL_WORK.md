@@ -9,7 +9,7 @@ before starting, and read `IMPLEMENTATION_PLAN.md` §3 to §5 for the milestones
 | Voice agent | M4, M5, and the aligner service for M8 | `apps/Synthetics-voice` | `m4-m5` | GPU, but only after M3 releases it |
 | Post agent | M6, M7, and M8 except the aligner service | `apps/Synthetics-post` | `m6-m8` | CPU only |
 
-Both worktrees branch from commit `5b5552f` ("Add the M4-M8 contract"). They sit next to the main tree, so
+Both worktrees branch from the commit "Add the coordination rules for parallel M4-M8 work". They sit next to the main tree, so
 the relative paths `../../platform` in `pyproject.toml` and `phases.yaml` still resolve.
 
 ## The machine
