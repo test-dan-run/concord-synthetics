@@ -14,11 +14,18 @@ Between speakers: centroid cosines of clones and of real clips, per model.
 Room colour: for a few speakers the same targets are also cloned from the raw (uncleaned) reference, and both sets
 are compared on MOS and similarity; the WAVs are written to `listen/` for a listening check.
 Writes report.json, report.md and clips.jsonl to the output directory.
+
+Resume: each finished speaker is appended to `progress.jsonl` (rows and embeddings), headed by the settings the
+results depend on. A rerun into the same directory skips the speakers already there, so a crash costs only the
+speaker in progress, and a larger run reuses a smaller one's speakers. If the settings changed, the old file is
+moved to `progress.jsonl.old` and the run starts over. Seeds are per clip, so a resumed run equals an unbroken one.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from collections.abc import Callable
 from itertools import combinations
 from pathlib import Path
@@ -34,6 +41,7 @@ from .voice_checks import asr_words, centroid, score_asr
 
 ROLES = (Role.TTS, Role.ASR_PRIMARY, Role.ASR_SINGLISH, Role.SV_WAVLM, Role.SV_REDIMNET, Role.QUALITY)
 SV = (Role.SV_WAVLM.value, Role.SV_REDIMNET.value)
+PROGRESS_VERSION = 1
 
 
 def select_speakers(refs: ReferenceIndex, n: int, seed: int) -> list[str]:
@@ -56,6 +64,19 @@ def select_speakers(refs: ReferenceIndex, n: int, seed: int) -> list[str]:
 def _speakable(text: str, lex: Lexicon) -> str:
     """The TTS text for a reference transcript (non-speech tags dropped)."""
     return " ".join(s.value for s in tts_input(text, lex) if s.kind == "speech").strip()
+
+
+def clip_seed(seed: int, *parts: str) -> int:
+    """The TTS seed of one clone: fixed by the run seed and the clip, not by the order clips are made in."""
+    return int(hashlib.sha256("|".join([str(seed), *parts]).encode()).hexdigest()[:8], 16)
+
+
+def _vecs(d: dict[str, np.ndarray]) -> dict[str, list[float]]:
+    return {n: [float(x) for x in v] for n, v in d.items()}
+
+
+def _arrays(d: dict[str, list[float]]) -> dict[str, np.ndarray]:
+    return {n: np.asarray(v, np.float32) for n, v in d.items()}
 
 
 def _summary(values: list[float]) -> dict | None:
@@ -102,13 +123,61 @@ class Bakeoff:
         return trim(self.tts.clone(text, ref, seed=seed).resample(self.cfg.sample_rate), pad_s=self.cfg.voice.trim_pad_s,
                     below_db=self.cfg.voice.trim_db)
 
+    def _settings(self, targets: int, modes: list[str], seed: int) -> dict:
+        """What a speaker's stored rows depend on; a stored speaker is reused only under the same settings."""
+        th, v = self.cfg.thresholds, self.cfg.voice
+        return {"version": PROGRESS_VERSION, "targets": targets, "modes": modes, "seed": seed,
+                "services": self.services, "refs_index": self.refs.sha256, "lexicon": self.lex.version,
+                "sample_rate": self.cfg.sample_rate,
+                "voice": {k: getattr(v, k) for k in ("cfg_value", "inference_timesteps", "trim_pad_s", "trim_db",
+                                                      "asr_language", "wer_ignore_fillers")},
+                "asr": {"wer_max": th.wer_max, "cer_max_short": th.cer_max_short,
+                        "short_utterance_words": th.short_utterance_words}}
+
+    def _load_progress(self, path: Path, settings: dict) -> dict[str, dict]:
+        """Speaker -> stored record; an unreadable last line (a crash mid-write) is ignored."""
+        if not path.is_file():
+            return {}
+        lines = path.read_text(encoding="utf-8").splitlines()
+        try:
+            head = json.loads(lines[0]) if lines else {}
+        except json.JSONDecodeError:
+            head = {}
+        if head.get("settings") != json.loads(json.dumps(settings)):
+            path.replace(path.with_name(path.name + ".old"))
+            self.log(f"{path.name}: settings changed, starting over (old file kept as {path.name}.old)")
+            return {}
+        done = {}
+        for line in lines[1:]:
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            done[rec["speaker"]] = rec
+        return done
+
     def run(self, speakers: list[str], *, targets: int, modes: list[str], raw_speakers: int, seed: int) -> dict:
         th = self.cfg.thresholds
         rows: list[dict] = []
         ref_emb, real_emb = {}, {}
         listen = self.out / "listen"
         raw_set = set(speakers[:raw_speakers])
+        self.out.mkdir(parents=True, exist_ok=True)
+        progress = self.out / "progress.jsonl"
+        settings = self._settings(targets, modes, seed)
+        done = self._load_progress(progress, settings)
+        if not progress.is_file():
+            atomic_write_text(progress, json.dumps({"settings": settings}) + "\n")
+        reused = 0
         for i, s in enumerate(speakers, 1):
+            if s in done:
+                rec = done[s]
+                ref_emb[s] = _arrays(rec["ref_emb"])
+                real_emb[s] = [_arrays(e) for e in rec["real_emb"]]
+                rows += [{**r, "_emb": _arrays(r["_emb"])} for r in rec["rows"]]
+                reused += 1
+                continue
+            first = len(rows)
             clips = self.refs.clips(s)
             ref_clip, tgts = clips[0], clips[1:1 + targets]
             ref = self.refs.voice_ref(ref_clip.pair_id)
@@ -127,11 +196,12 @@ class Bakeoff:
                     for ref_kind, r in refs_used:
                         if ref_kind == "raw" and mode != modes[0]:
                             continue
-                        clone = self._clone(text, r, seed + len(rows), mode)
+                        cs = clip_seed(seed, s, t.pair_id, mode, ref_kind)
+                        clone = self._clone(text, r, cs, mode)
                         e = self._emb(clone)
                         asr = self._asr(clone, t.text)
                         row = {"speaker": s, "target": t.pair_id, "ref": ref_clip.pair_id, "ref_kind": ref_kind,
-                               "mode": mode, "text": text, "duration": round(clone.duration, 3),
+                               "mode": mode, "seed": cs, "text": text, "duration": round(clone.duration, 3),
                                "sv_ref": {n: round(float(e[n] @ ref_emb[s][n]), 4) for n in SV},
                                "sv_real": {n: round(float(e[n] @ real_e[n]), 4) for n in SV},
                                "real_sv_ref": {n: round(float(real_e[n] @ ref_emb[s][n]), 4) for n in SV},
@@ -146,7 +216,15 @@ class Bakeoff:
             if s in raw_set:
                 for kind, r in refs_used:
                     r.audio.save(listen / f"{s}_ref_{kind}.wav")
+            rec = {"speaker": s, "ref_emb": _vecs(ref_emb[s]), "real_emb": [_vecs(e) for e in real_emb.get(s, [])],
+                   "rows": [{**r, "_emb": _vecs(r["_emb"])} for r in rows[first:]]}
+            with progress.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
             self.log(f"[{i}/{len(speakers)}] {s}: {len(tgts)} targets x {len(modes)} mode(s)")
+        if reused:
+            self.log(f"reused {reused} speaker(s) from {progress}")
 
         # speaker identification: nearest reference among all sampled speakers
         names = sorted(ref_emb)
@@ -162,7 +240,6 @@ class Bakeoff:
                   "real_baseline": self._baseline(rows, modes[0]),
                   "separability": self._separability(rows, real_emb, modes[0]),
                   "room_colour": self._room_colour(rows, modes[0])}
-        self.out.mkdir(parents=True, exist_ok=True)
         atomic_write_text(self.out / "clips.jsonl", "".join(
             json.dumps({k: v for k, v in r.items() if k != "_emb"}, ensure_ascii=False) + "\n" for r in rows))
         atomic_write_text(self.out / "report.json", json.dumps(report, indent=2) + "\n")
@@ -276,7 +353,7 @@ def render_markdown(r: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def run_bakeoff(*, out_dir: Path, mode: str = "aicore", n_speakers: int = 60, targets: int = 3,
+def run_bakeoff(*, out_dir: Path, mode: str = "aicore", n_speakers: int = 30, targets: int = 3,
                 modes: list[str] | None = None, raw_speakers: int = 10, seed: int = 1, lease: bool = True,
                 keep_services: bool = False, log: Callable[[str], None] = print) -> dict:
     from ..backends.registry import Backends
