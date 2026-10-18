@@ -7,7 +7,8 @@ recording of the same words by the same person to compare with. Measured per clo
 - speaker similarity in both SV models, to the reference and to the real recording of the target;
 - WER (CER for short texts) through both ASRs, on the clone and on the real recording (the ASR baseline), and
   whether the clone would pass stage 5 only through the Singlish ASR (asr_limited);
-- MOS of the clone, of the real recording and of the reference;
+- MOS of the clone, of the real recording and of the reference (`ref_utmos`, the clone's speaker-relative floor in
+  stage 5; `ref_mos` is the reference's DNSMOS from cleanup);
 - speaker identification: whether the clone's nearest reference among all sampled speakers is its own.
 Between speakers: centroid cosines of clones and of real clips, per model.
 
@@ -175,6 +176,7 @@ class Bakeoff:
                 ref_emb[s] = _arrays(rec["ref_emb"])
                 real_emb[s] = [_arrays(e) for e in rec["real_emb"]]
                 rows += [{**r, "_emb": _arrays(r["_emb"])} for r in rec["rows"]]
+                self._fill_ref_utmos(s, rows, len(rows) - len(rec["rows"]))
                 reused += 1
                 continue
             first = len(rows)
@@ -185,6 +187,7 @@ class Bakeoff:
             refs_used = [("clean", ref)]
             if s in raw_set and ref_clip.raw_path is not None and ref_clip.raw_path.is_file():
                 refs_used.append(("raw", VoiceRef(Audio.load(ref_clip.raw_path), ref.text, ref.clip_id)))
+            ref_utmos = {kind: round(float(self.q.score([r.audio])[0]), 3) for kind, r in refs_used}
             for t in tgts:
                 real = self.refs.voice_ref(t.pair_id).audio
                 real_e = self._emb(real)
@@ -206,7 +209,8 @@ class Bakeoff:
                                "sv_real": {n: round(float(e[n] @ real_e[n]), 4) for n in SV},
                                "real_sv_ref": {n: round(float(real_e[n] @ ref_emb[s][n]), 4) for n in SV},
                                "asr": asr, "real_asr": real_asr, "mos": round(float(self.q.score([clone])[0]), 3),
-                               "real_mos": round(real_mos, 3), "ref_mos": ref_clip.mos, "_emb": e}
+                               "real_mos": round(real_mos, 3), "ref_mos": ref_clip.mos,
+                               "ref_utmos": ref_utmos[ref_kind], "_emb": e}
                         rows.append(row)
                         if s in raw_set:
                             listen.mkdir(parents=True, exist_ok=True)
@@ -234,7 +238,7 @@ class Bakeoff:
                 row.setdefault("id_correct", {})[n] = names[int(np.argmax(sims))] == row["speaker"]
         report = {"services": self.services, "speakers": len(speakers), "targets_per_speaker": targets,
                   "modes": modes, "thresholds": {"sv": th.sv, "wer_max": th.wer_max, "cer_max_short": th.cer_max_short,
-                                                 "mos_min": th.mos_min},
+                                                 "mos_min": th.mos_min, "mos_drop_max": th.mos_drop_max},
                   "by_mode": {m: self._summarise([r for r in rows if r["mode"] == m and r["ref_kind"] == "clean"])
                               for m in modes},
                   "real_baseline": self._baseline(rows, modes[0]),
@@ -245,6 +249,22 @@ class Bakeoff:
         atomic_write_text(self.out / "report.json", json.dumps(report, indent=2) + "\n")
         atomic_write_text(self.out / "report.md", render_markdown(report))
         return report
+
+    def _mos_ok(self, r: dict) -> bool:
+        """Stage 5's MOS rule: an absolute floor and a floor relative to the reference clip."""
+        th = self.cfg.thresholds
+        return r["mos"] >= max(th.mos_min, r["ref_utmos"] - th.mos_drop_max)
+
+    def _fill_ref_utmos(self, speaker: str, rows: list[dict], first: int) -> None:
+        """Stored rows from before `ref_utmos` was recorded: score the reference clips now."""
+        missing = {r["ref_kind"] for r in rows[first:] if "ref_utmos" not in r}
+        if not missing:
+            return
+        clip = self.refs.best(speaker)
+        audio = {"clean": lambda: self.refs.voice_ref(clip.pair_id).audio, "raw": lambda: Audio.load(clip.raw_path)}
+        score = {k: round(float(self.q.score([audio[k]()])[0]), 3) for k in missing}
+        for r in rows[first:]:
+            r.setdefault("ref_utmos", score.get(r["ref_kind"]))
 
     def _summarise(self, rows: list[dict]) -> dict:
         th = self.cfg.thresholds
@@ -263,9 +283,9 @@ class Bakeoff:
         out["asr_pass_rate"] = round(float(np.mean(asr_pass)), 4) if rows else None
         out["asr_limited_rate"] = round(float(np.mean([not r["asr"][p]["pass"] and r["asr"][s]["pass"] for r in rows])), 4) if rows else None
         out["mos"] = _summary([r["mos"] for r in rows])
-        out["mos_pass_rate"] = round(float(np.mean([r["mos"] >= th.mos_min for r in rows])), 4) if rows else None
+        out["mos_pass_rate"] = round(float(np.mean([self._mos_ok(r) for r in rows])), 4) if rows else None
         out["stage5_pass_rate"] = round(float(np.mean([
-            all(r["sv_ref"][n] >= th.sv[n] for n in SV) and a and r["mos"] >= th.mos_min
+            all(r["sv_ref"][n] >= th.sv[n] for n in SV) and a and self._mos_ok(r)
             for r, a in zip(rows, asr_pass, strict=True)])), 4) if rows else None
         return out
 
@@ -329,7 +349,8 @@ def render_markdown(r: dict) -> str:
         for k in ("asr_primary", "asr_singlish"):
             lines += [f"| {k} error (WER, CER if short) | {fmt(m[f'{k}_error'])} |", f"| {k} pass rate | {m[f'{k}_pass_rate']} |"]
         lines += [f"| ASR-limited rate | {m['asr_limited_rate']} |", f"| MOS | {fmt(m['mos'])} |",
-                  f"| MOS pass rate (floor {r['thresholds']['mos_min']}) | {m['mos_pass_rate']} |",
+                  f"| MOS pass rate (at least {r['thresholds']['mos_min']} and reference - "
+                  f"{r['thresholds']['mos_drop_max']}) | {m['mos_pass_rate']} |",
                   f"| would pass stage 5 | {m['stage5_pass_rate']} |", ""]
     b = r["real_baseline"]
     lines += ["## Real recordings (baseline)", "", "| Measure | Value |", "|---|---|", f"| MOS | {fmt(b['mos'])} |"]

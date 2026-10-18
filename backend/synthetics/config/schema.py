@@ -278,15 +278,16 @@ class ScriptRuleThresholds(_M):
 class ThresholdsConfig(_M):
     judge_pass: float = 3.0  # 1-5 overall; rubric_v2 anchors 3 as "usable"
     judge_band: float = 0.5  # tie-breaker within +-band of the pass mark
-    sv: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.70, "sv_redimnet": 0.60})
+    sv: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.5568, "sv_redimnet": 0.6515})
     wer_max: float = 0.35
     cer_max_short: float = 0.40
     short_utterance_words: int = 3
-    mos_min: float = 3.0
+    mos_min: float = 1.0  # absolute MOS floor (broken audio); the speaker-relative floor below does most of the work
+    mos_drop_max: float = 0.75  # stage 5: an utterance may score at most this far below its reference clip's MOS
     script_rules: ScriptRuleThresholds = ScriptRuleThresholds()
-    # stage 5; provisional until calibrate-sv (M4) writes measured values
-    sv_consistency_min: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.75, "sv_redimnet": 0.65})
-    sv_pair_max: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.85, "sv_redimnet": 0.75})
+    # stage 5; from `calibrate-sv` on 875 clean NSC clips (config/sv_thresholds.json)
+    sv_consistency_min: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.6872, "sv_redimnet": 0.7991})
+    sv_pair_max: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.5568, "sv_redimnet": 0.6515})
     # stage 8 quality gates
     align_coverage_min: float = 0.90  # share of text_norm words with a timing, per utterance
     align_slack_s: float = 0.05  # an aligned word may overrun its segment by this much

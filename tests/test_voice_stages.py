@@ -41,7 +41,11 @@ def voice_env(refs_dir, tmp_path, monkeypatch):
 
 
 def scripted_run(tmp_path, n=1, seed=11, **overrides):
-    rd, cfg = fake_run(tmp_path, n=n, seed=seed, **overrides)
+    # Fakes, not real geometry: the fake MOS hashes the samples (unrelated to the reference clip's), and two random
+    # 16-bit fake voices often reach cosine 0.5, over the real pair limits. So no speaker-relative MOS floor, and
+    # pair limits only identical-looking fake voices exceed, unless a test sets them.
+    fakes = {"thresholds.mos_drop_max": 5.0, "thresholds.sv_pair_max": {"sv_wavlm": 0.85, "sv_redimnet": 0.75}}
+    rd, cfg = fake_run(tmp_path, n=n, seed=seed, **{**fakes, **overrides})
     PhaseScheduler(rd, cfg).run(until=StageId.SCRIPT_VAL)
     return rd, cfg
 
@@ -198,6 +202,39 @@ def test_failing_utterances_are_resynthesised_with_a_new_seed(tmp_path):
     st = StatusStore(rd).get(mid)
     assert st.get(StageId.VOICE).attempts == 2 and st.get(StageId.VOICE).feedback is None
     assert summarise_c(rd)["resynthesis_rate"] > 0
+
+
+class RefScoresHigher:
+    """MOS `ref` for the clean reference clips, `clone` for everything else."""
+
+    def __init__(self, ref: float, clone: float):
+        from synthetics.nsc.references import ReferenceIndex
+        from synthetics.nsc.settings import nsc_paths
+
+        idx = ReferenceIndex.load(nsc_paths())
+        self.refs = {self._key(idx.voice_ref(c.pair_id).audio) for s in idx.speakers() for c in idx.clips(s)}
+        self.ref, self.clone = ref, clone
+
+    @staticmethod
+    def _key(a: Audio) -> str:
+        return hashlib.sha256(a.samples.tobytes()).hexdigest()
+
+    def score(self, clips):
+        return np.asarray([self.ref if self._key(c) in self.refs else self.clone for c in clips], np.float32)
+
+
+@pytest.mark.parametrize(("ref", "passed"), [(4.0, True), (4.5, False)])
+def test_mos_floor_is_relative_to_the_reference(tmp_path, ref, passed):
+    rd, cfg = scripted_run(tmp_path, **{"thresholds.mos_drop_max": 0.75, "thresholds.mos_min": 1.0,
+                                        "retries.tts_attempts": 1, "voice.mos_min_s": 0.0})
+    phase_c(rd, cfg, **{Role.QUALITY: RefScoresHigher(ref, 3.6)})
+    vv = read_model(RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0]).voice_validation, VoiceValidation)
+    assert {sp.ref_mos for sp in vv.speakers} == {ref}
+    assert all(u.mos == pytest.approx(3.6) for u in vv.utterances if u.mos is not None)
+    if passed:  # 3.6 >= 4.0 - 0.75
+        assert vv.decision == "pass"
+    else:  # 3.6 < 4.5 - 0.75
+        assert vv.decision == "fail" and all("MOS 3.60 < 3.75" in u.reasons for u in vv.utterances if u.mos is not None)
 
 
 def test_meeting_fails_when_an_utterance_never_passes(tmp_path):

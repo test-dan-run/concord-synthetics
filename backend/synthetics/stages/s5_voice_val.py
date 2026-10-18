@@ -5,7 +5,9 @@ Per utterance:
   (`thresholds.sv`), neither weighted above the other; skipped below `voice.sv_min_s`;
 - ASR round trip: the primary ASR first (WER on `text_norm` words, CER for short utterances); on failure the
   Singlish ASR, and a pass there tags the utterance `asr_limited`; skipped when the turn has no words to check;
-- MOS floor (`thresholds.mos_min`); skipped below `voice.mos_min_s`.
+- MOS floor: at least `thresholds.mos_min`, and at most `thresholds.mos_drop_max` below the MOS of the speaker's
+  reference clip (UTMOS rates real NSC voices from about 1.3 to 3.3, so a fixed floor would reject whole voices);
+  skipped below `voice.mos_min_s`.
 Per speaker: within-speaker consistency (mean pairwise cosine of its utterances) in both models.
 Per pair of speakers: centroid cosine in both models; a pair is too close if either model is above its
 `thresholds.sv_pair_max`.
@@ -57,6 +59,7 @@ class Stage5Config(BaseModel):
     cer_max_short: float
     short_utterance_words: int
     mos_min: float
+    mos_drop_max: float
     tts_attempts: int
     asr_language: str | None
     wer_ignore_fillers: bool
@@ -78,13 +81,14 @@ class VoiceValidationStage:
     roles = (Role.ASR_PRIMARY, Role.ASR_SINGLISH, Role.SV_WAVLM, Role.SV_REDIMNET, Role.QUALITY)
     reads = ("meeting", "script", "synthesis", "utterances_dir", "speaker_splits")
     writes = ("voice_validation",)
-    version = "1"
+    version = "2"
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         th, v = cfg.thresholds, cfg.voice
         return Stage5Config(sv=th.sv, sv_consistency_min=th.sv_consistency_min, sv_pair_max=th.sv_pair_max,
                             wer_max=th.wer_max, cer_max_short=th.cer_max_short,
                             short_utterance_words=th.short_utterance_words, mos_min=th.mos_min,
+                            mos_drop_max=th.mos_drop_max,
                             tts_attempts=cfg.retries.tts_attempts, asr_language=v.asr_language,
                             wer_ignore_fillers=v.wer_ignore_fillers, sv_min_s=v.sv_min_s, mos_min_s=v.mos_min_s,
                             on_exhausted=v.on_exhausted, max_speaker_swaps=v.max_speaker_swaps,
@@ -110,6 +114,7 @@ class VoiceValidationStage:
 
         ref_emb = {sid: {name: e.embed([refs.voice_ref(va.clip_id).audio])[0] for name, e in embedders.items()}
                    for sid, va in syn.voices.items()}
+        ref_mos = {sid: round(float(q.score([refs.voice_ref(va.clip_id).audio])[0]), 3) for sid, va in syn.voices.items()}
         swaps_for = {sid: sum(s.speaker_id == sid for s in syn.swaps) for sid in syn.voices}
         utt_emb: dict[str, dict[str, list[np.ndarray]]] = {sid: {n: [] for n in embedders} for sid in syn.voices}
 
@@ -156,8 +161,9 @@ class VoiceValidationStage:
             mos = None
             if audio.duration >= vc.mos_min_s:
                 mos = round(float(q.score([audio])[0]), 3)
-                if mos < th.mos_min:
-                    reasons.append(f"MOS {mos:.2f} < {th.mos_min:.2f}")
+                floor = max(th.mos_min, ref_mos[u.speaker_id] - th.mos_drop_max)
+                if mos < floor:
+                    reasons.append(f"MOS {mos:.2f} < {floor:.2f}")
             else:
                 skipped.append("mos")
 
@@ -172,7 +178,7 @@ class VoiceValidationStage:
                 continue
             cons = {n: round(consistency(e), 4) for n, e in embs.items()}
             ok = all(cons[n] >= th.sv_consistency_min[n] for n in cons)
-            speakers.append(SpeakerCheck(speaker_id=sid, consistency=cons, passed=ok))
+            speakers.append(SpeakerCheck(speaker_id=sid, consistency=cons, passed=ok, ref_mos=ref_mos[sid]))
             cents[sid] = {n: centroid(e) for n, e in embs.items()}
         pairs = []
         for a, c in combinations(sorted(cents), 2):

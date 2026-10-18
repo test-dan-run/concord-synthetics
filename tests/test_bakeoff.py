@@ -42,7 +42,8 @@ def test_bakeoff_report(tmp_path):
     m = rep["by_mode"]["ultimate"]
     assert m["clones"] == 8 and rep["by_mode"]["continuation"]["clones"] == 8
     assert m["sv_wavlm_to_ref"]["mean"] == pytest.approx(1.0) and m["sv_redimnet_id_accuracy"] == 1.0
-    assert m["asr_primary_pass_rate"] == 1.0 and m["asr_limited_rate"] == 0.0 and m["stage5_pass_rate"] == 1.0
+    assert m["asr_primary_pass_rate"] == 1.0 and m["asr_limited_rate"] == 0.0
+    assert m["stage5_pass_rate"] == m["mos_pass_rate"]  # fake MOS is unrelated to the reference's; the rest passes
     assert rep["real_baseline"]["recordings"] == 8
     assert rep["separability"]["sv_wavlm"]["pairs"] == 6
     assert rep["room_colour"]["pairs"] == 2

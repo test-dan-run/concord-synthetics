@@ -93,6 +93,7 @@ class SpeakerCheck(_A):
     speaker_id: str
     consistency: dict[str, float]  # SV role -> mean pairwise cosine between this speaker's utterances
     passed: bool
+    ref_mos: float | None = None  # MOS of the speaker's reference clip: the utterance MOS floors are relative to it
 
 
 class PairCheck(_A):
