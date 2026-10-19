@@ -214,6 +214,27 @@ def sampler_report(n: Annotated[int, typer.Option()] = 1000, seed: Annotated[int
     raise typer.Exit(0 if all(c.ok for c in checks) else 1)
 
 
+@app.command("coverage-seed")
+def coverage_seed(n: Annotated[int, typer.Option(help="meetings in the run")] = 20,
+                  start: Annotated[int, typer.Option(help="first seed to try")] = 1,
+                  tries: Annotated[int, typer.Option()] = 500,
+                  config: Annotated[list[Path], typer.Option("--config", "-c", help="YAML overlays, in order")] = []):  # noqa: B006
+    """M9: the first run seed whose N meetings cover every split, room class, a 20-speaker test meeting,
+    presenters, wall seats (overflow and by choice) and remote participants."""
+    from ..config.loader import load_run_config
+    from ..validators.coverage import find_seed
+    from .run import resolve
+
+    cfg = resolve(load_run_config(*config, overrides={"run_id": "coverage-seed", "seed": start, "n_meetings": n}))
+    seed, cov = find_seed(cfg, n, start=start, tries=tries)
+    for name, ok in cov.items():
+        typer.echo(f"{'ok  ' if ok else 'MISS'} {name}")
+    if seed is None:
+        typer.echo(f"no seed in {start}..{start + tries - 1} covers everything")
+        raise typer.Exit(1)
+    typer.echo(f"seed {seed}")
+
+
 @app.command("export-judge-set")
 def export_judge_set(run: RunOpt, n: Annotated[int, typer.Option(help="scripts to export (50-100)")] = 60,
                      name: Annotated[str, typer.Option()] = "judge_set_1",
