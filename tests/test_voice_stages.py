@@ -112,6 +112,20 @@ def test_pair_check_uses_the_single_pair_scale_not_centroids():
     assert float(centroid(a) @ centroid(b)) > single + 0.05  # what flagged real meetings
 
 
+@pytest.mark.parametrize("min_s", [0.0, 1000.0])
+def test_consistency_uses_only_long_enough_utterances(tmp_path, min_s):
+    rd, cfg = scripted_run(tmp_path, **{"voice.consistency_min_s": min_s})
+    phase_c(rd, cfg)
+    vv = read_model(RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0]).voice_validation, VoiceValidation)
+    assert vv.decision == "pass" and vv.speakers
+    scored = {sid: sum(1 for u in vv.utterances if u.speaker_id == sid and u.sv) for sid in {s.speaker_id for s in vv.speakers}}
+    for sp in vv.speakers:
+        if min_s == 0.0 and scored[sp.speaker_id] >= cfg.voice.consistency_min_utts:
+            assert set(sp.consistency) == {"sv_wavlm", "sv_redimnet"} and sp.consistency_utts == scored[sp.speaker_id]
+        if min_s == 1000.0:  # no utterance is that long: every speaker check is skipped, and passes
+            assert sp.consistency == {} and sp.consistency_utts == 0 and sp.passed
+
+
 def test_backchannels_and_wordless_turns_skip_the_sv_checks(tmp_path):
     rd, cfg = scripted_run(tmp_path, **{"voice.sv_min_s": 0.0})
     phase_c(rd, cfg)

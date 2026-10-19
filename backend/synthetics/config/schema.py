@@ -343,6 +343,11 @@ class VoiceConfig(_M):
     wer_ignore_fillers: bool = True  # (um) (uh) are dropped from both sides before WER; particles stay
     sv_min_s: float = 1.0  # shorter utterances skip the SV checks (embeddings are unreliable)
     mos_min_s: float = 1.0  # shorter utterances skip the MOS floor
+    # Within-speaker consistency uses only utterances this long: thresholds.sv_consistency_min is a percentile of
+    # 5-15 s NSC clip pairs, and 2 s clips embed so noisily that speakers with short turns failed it whatever voice
+    # they got (WavLM to reference: 0.68 at 1-2 s, 0.77 at 3-5 s, 0.79 above 5 s)
+    consistency_min_s: float = 3.0
+    consistency_min_utts: int = 3  # fewer such utterances: the speaker check is skipped
     on_exhausted: Literal["fail", "keep_flagged"] = "keep_flagged"  # an utterance still failing after retries.tts_attempts
 
 

@@ -92,7 +92,9 @@ class UtteranceCheck(_A):
 
 class SpeakerCheck(_A):
     speaker_id: str
-    consistency: dict[str, float]  # SV role -> mean pairwise cosine between this speaker's utterances
+    consistency: dict[str, float]  # SV role -> mean pairwise cosine between this speaker's utterances of at least
+    # voice.consistency_min_s; empty when there are fewer than voice.consistency_min_utts of them (check skipped)
+    consistency_utts: int = 0  # utterances the consistency was computed on
     passed: bool
     ref_mos: float | None = None  # MOS of the speaker's reference clip: the utterance MOS floors are relative to it
 
