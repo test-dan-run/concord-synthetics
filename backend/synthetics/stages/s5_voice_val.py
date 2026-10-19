@@ -2,7 +2,9 @@
 
 Per utterance:
 - speaker similarity to the speaker's reference clip in both SV models, each against its own threshold
-  (`thresholds.sv`), neither weighted above the other; skipped below `voice.sv_min_s`;
+  (`thresholds.sv`), neither weighted above the other; skipped below `voice.sv_min_s`, and for backchannels and
+  turns with no words (an "mm" or a laugh carries too little of the voice: real hums scored 0.07-0.54 against a
+  0.56 threshold), which also keeps them out of the consistency and separability checks;
 - ASR round trip: the primary ASR (WER on `text_norm` words, CER for short utterances); skipped when the turn has
   no words to check. A failure is re-synthesised like any other. The Singlish ASR is a fallback only when phase C
   leases `asr_singlish` (off by default: MERaLiON leaves about 1 GB of VRAM headroom and the bake-off never
@@ -89,7 +91,7 @@ class VoiceValidationStage:
     roles = (Role.ASR_PRIMARY, Role.ASR_SINGLISH, Role.SV_WAVLM, Role.SV_REDIMNET, Role.QUALITY)
     reads = ("meeting", "script", "synthesis", "utterances_dir", "speaker_splits")
     writes = ("voice_validation",)
-    version = "2"
+    version = "3"
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         th, v = cfg.thresholds, cfg.voice
@@ -132,8 +134,9 @@ class VoiceValidationStage:
             turn = turns[u.turn_id]
             audio = Audio.load(paths.utterance(u.turn_id))
             reasons, skipped = [], []
+            ref_words = asr_words(turn.text_norm, lex, ignore_fillers=vc.wer_ignore_fillers, normalised=True)
             sv: dict[str, float] = {}
-            if audio.duration >= vc.sv_min_s:
+            if audio.duration >= vc.sv_min_s and ref_words and turn.interaction != "backchannel":
                 for name, e in embedders.items():
                     vec = e.embed([audio])[0]
                     utt_emb[u.speaker_id][name].append(vec)
@@ -145,7 +148,6 @@ class VoiceValidationStage:
 
             asr: list[AsrCheck] = []
             limited, short = False, False
-            ref_words = asr_words(turn.text_norm, lex, ignore_fillers=vc.wer_ignore_fillers, normalised=True)
             if ref_words and u.source != "library":
                 ignore = laugh_ignore if "laugh" in turn.nonspeech else frozenset()
                 for role, client, service in asrs:

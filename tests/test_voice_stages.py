@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 import yaml
 
+from conftest import ROOT
 from helpers import fake_run
 from synthetics.artifacts.io import read_model, write_model
 from synthetics.artifacts.models import Script
@@ -81,6 +82,28 @@ def test_synthetic_sounds(tag):
     a = synthetic(tag, 16000, 3)
     assert 0.2 < a.duration < 1.0 and np.abs(a.samples).max() > 0.01
     assert np.array_equal(a.samples, synthetic(tag, 16000, 3).samples)
+
+
+def test_asr_spellings_of_the_same_word_score_as_a_match():
+    from synthetics.text.singlish import Lexicon
+    from synthetics.validators.voice_checks import score_asr
+
+    lex = Lexicon.load(ROOT / "backend/synthetics/config/defaults/singlish_lexicon.yaml")
+    kw = {"short_words": 3, "ignore_fillers": True}
+    assert score_asr(["ya"], "Yeah.", lex, **kw).error == 0.0
+    assert score_asr(["ok", "lah"], "Okay lah.", lex, **kw).error == 0.0
+    assert score_asr(["good"], "Right.", lex, **kw).error > 0.4
+
+
+def test_backchannels_and_wordless_turns_skip_the_sv_checks(tmp_path):
+    rd, cfg = scripted_run(tmp_path, **{"voice.sv_min_s": 0.0})
+    phase_c(rd, cfg)
+    mp = RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0])
+    turns = {t.turn_id: t for t in read_model(mp.script, Script).turns}
+    vv = read_model(mp.voice_validation, VoiceValidation)
+    bc = [u for u in vv.utterances if turns[u.turn_id].interaction == "backchannel"]
+    assert bc and all("sv" in u.skipped and not u.sv for u in bc)
+    assert all(u.sv for u in vv.utterances if turns[u.turn_id].interaction != "backchannel" and "asr" not in u.skipped)
 
 
 def test_sound_library_picks_gender_matched_clips(tmp_path):

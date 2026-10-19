@@ -86,7 +86,8 @@ class UtteranceCheck(_A):
     seed: int
     passed: bool
     reasons: list[str] = Field(default_factory=list)  # why it failed, one short phrase each
-    skipped: list[str] = Field(default_factory=list)  # checks not applied: "sv" / "mos" (too short), "asr" (no words)
+    skipped: list[str] = Field(default_factory=list)  # checks not applied: "sv" (too short, a backchannel or no
+    # words), "mos" (too short), "asr" (no words)
 
 
 class SpeakerCheck(_A):

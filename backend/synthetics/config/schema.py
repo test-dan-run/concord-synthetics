@@ -338,7 +338,8 @@ class VoiceConfig(_M):
     nonlexical_tts: dict[str, str] = Field(default_factory=lambda: {"laugh": "haha"})  # tag -> text to clone when the
     # sound library has no clip for it; other tags fall back to a synthetic sound
     # stage 5: checks
-    asr_language: str | None = None  # None: the ASR detects it (code-switched turns)
+    asr_language: str | None = "en"  # None lets the ASR detect it, but it hears one-word turns as Chinese or
+    # Japanese ("Right." -> "对。"); "en" keeps code-switched words romanised, as the scripts write them
     wer_ignore_fillers: bool = True  # (um) (uh) are dropped from both sides before WER; particles stay
     sv_min_s: float = 1.0  # shorter utterances skip the SV checks (embeddings are unreliable)
     mos_min_s: float = 1.0  # shorter utterances skip the MOS floor
