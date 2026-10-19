@@ -21,7 +21,7 @@ This is for picking up tomorrow. It covers the state after M4, the M5 code, and 
 | Milestone | State |
 |---|---|
 | M4 bake-off | **Done.** Choices confirmed and thresholds in config (`docs/VOICE_BAKEOFF.md`) |
-| M5 stages 4 and 5 | Code done and tested on fakes. **Exit not met yet:** 50 meetings through phase C on real scripts, with pass, re-synthesis and swap rates. `orchestrator/phase_c.py:summarise_c` computes them, but no CLI command calls it yet |
+| M5 stages 4 and 5 | Code done and tested on fakes. **Exit not met yet:** the 10 M3 meetings through phase C, with pass, re-synthesis and swap rates. `synthetics voice-report -r <run>` reports them |
 | M6, M7, M8 | Done by the post agent (see its notes under Open items) |
 | M9 | Next: a 20-meeting unattended end-to-end run, with the coverage list in the plan |
 
@@ -35,11 +35,14 @@ added back to phase C.
 
 ## Next steps, in order
 
-1. **M5 exit:** 50 meetings through phase C on real scripts from the M3 run. Report the pass, re-synthesis and
-   swap rates. The ASR-limited rate is 0 by construction now (see above). The bake-off predicts about 100%
-   first-pass on SV, ASR and MOS, and a speaker swap in about one meeting in seven.
+1. **M5 exit:** the 10 meetings of the M3 run (`runs/m3-10` in `apps/Synthetics`, 3,783 turns) through phase C,
+   then `synthetics voice-report -r m3-10` (exits 1 below 10 meetings). This was 50 meetings, cut on Oct 19: 40
+   more scripts would take about 5 hours, and phase C on 50 meetings most of a day, without moving the utterance
+   rates. The ASR-limited rate is 0 by construction now (see above). The bake-off predicts about 100% first-pass
+   on SV, ASR and MOS, and a speaker swap in about one meeting in seven.
 2. **M9:** the 20-meeting end-to-end run, with the coverage list from the plan. Phases go A → B → B2 → C → D, one
-   at a time on the GPU.
+   at a time on the GPU. Its report includes `voice-report`, so the meeting rates from M5 (pass, swaps) rest on
+   30 meetings in all.
 
 ## Platform changes on disk (no git)
 

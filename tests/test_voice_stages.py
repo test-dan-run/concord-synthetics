@@ -323,6 +323,9 @@ def test_too_close_speakers_get_a_clip_swap_then_a_speaker_swap(tmp_path):
     assert sp.to_speaker not in {p["nsc_speaker"]["speaker"] for p in people}
     turns = [u for u in syn.utterances if u.speaker_id == sp.speaker_id]
     assert all(u.attempt == 3 for u in turns)  # made with the first clip, the second clip, the new speaker
+    s = summarise_c(rd)
+    assert s["clip_swaps"] == s["speaker_swaps"] == 1 and s["speaker_swap_meeting_rate"] == 1.0
+    assert s["resynthesis_rate"] == 0.0  # re-renders after a swap are not re-syntheses
 
 
 def test_meeting_fails_when_no_swap_is_left(tmp_path):
@@ -331,6 +334,8 @@ def test_meeting_fails_when_no_swap_is_left(tmp_path):
     mid = RunPaths(rd).meeting_ids()[0]
     st = StatusStore(rd).get(mid).get(StageId.VOICE_VAL)
     assert st.state == "fail" and "no swap left" in st.detail
+    s = summarise_c(rd)
+    assert s["pass_rate"] == 0.0 and "no swap left" in s["failed"][mid]
     vv = read_model(RunPaths(rd).meeting(mid).voice_validation, VoiceValidation)
     assert [s.kind for s in vv.swaps] == ["clip"]
 

@@ -560,7 +560,11 @@ The UI comes last (M12–M13).
   other (§3.1). Within-speaker consistency. Between-speaker separability, where a pair is flagged if
   either model finds it too close, followed by reference swaps. Two-step ASR round-trip with the
   `asr_limited` tag. CER for short utterances. MOS floor. Re-synthesis with a new seed, up to N attempts.
-- **Exit:** 50 meetings through phase C, with pass, re-synthesis and ASR-limited rates reported.
+- **Exit:** the 10 meetings of the M3 run through phase C (about 3,800 utterances), with pass,
+  first-pass, re-synthesis, ASR-limited and swap rates reported (`synthetics voice-report`). The
+  utterance rates are firm at this size. The meeting rates (pass, swaps) are not, so M9 reports them
+  again over its 20 meetings. This was 50 meetings; it was cut to save about 5 hours of scripts and
+  a day of phase C that would not have moved the utterance rates.
 
 ### M6: Stage 6, conversation assembly (CPU)
 - Timeline placement driven by the turn-taking config: gaps, overlaps, interruptions with truncation,
@@ -599,6 +603,8 @@ The UI comes last (M12–M13).
   makes sure of coverage: all three splits, both room classes, at least one 20-speaker test meeting,
   and at least one meeting each with presenters, wall seats (both overflow and by choice) and remote
   participants.
+- The run report includes `synthetics voice-report` for its 20 meetings, so the M5 meeting rates
+  (stage 5 pass rate, speaker swaps per meeting) rest on 30 meetings in all.
 
 ### M10: Run statistics for the viewer
 - Turn-taking stats in `manifest.jsonl`, `fit_resamples`, per-speaker position types and per-stage

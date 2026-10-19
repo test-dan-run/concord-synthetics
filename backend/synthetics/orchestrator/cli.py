@@ -260,6 +260,22 @@ def bakeoff(out: Annotated[Path, typer.Option(help="report directory")] = Path("
     typer.echo(f"report: {app_path(out) / 'report.md'}")
 
 
+@app.command("voice-report")
+def voice_report(run: RunOpt,
+                 min_meetings: Annotated[int, typer.Option(help="meetings stage 5 must have decided (M5 exit: 10)")] = 10,
+                 out: Annotated[Path | None, typer.Option(help="also write the figures as JSON")] = None):
+    """M5 exit check: pass, first-pass, re-synthesis, ASR-limited and swap rates over phase C."""
+    from .phase_c import summarise_c
+
+    res = summarise_c(_run_dir(run))
+    text = json.dumps(res, indent=2)
+    typer.echo(text)
+    if out:
+        out.write_text(text + "\n")
+    typer.echo(f"{res['ran']} of {min_meetings} meetings through phase C")
+    raise typer.Exit(0 if res["ran"] >= min_meetings else 1)
+
+
 @app.command("calibrate-sv")
 def calibrate_sv(out: Annotated[Path, typer.Option(help="YAML overlay to write")] = Path("config/sv_thresholds.yaml"),
                  mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",
