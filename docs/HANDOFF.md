@@ -1,48 +1,48 @@
-# Handoff: where things stand (Oct 19, 2026, night)
+# Handoff: where things stand (Oct 20, 2026, early morning)
 
-This is for picking up tomorrow. It covers the state after M4, the M5 code, and the merges. Read it with
-`docs/VOICE_BAKEOFF.md` (the measurements behind the voice choices) and `IMPLEMENTATION_PLAN.md` §5 (M5 to M11).
+This covers the overnight work of Oct 19–20: the M5 exit run, the stage 5, 7 and 8 fixes it led to, and the start
+of the M9 run. Read it with `docs/M5_EXIT.md` (the M5 results and every fix), `docs/VOICE_BAKEOFF.md` (the voice
+model measurements) and `IMPLEMENTATION_PLAN.md` §5 (M5 to M11).
 
-## State tonight
+## State
 
-- **Code:** `main` has M0 to M3 (main tree), M6 to M8 (`m6-m8`, merged as `a9e6e40`) and M4/M5 (`m4-m5`, merged
-  twice; this file came with the second merge). The scheduler already calls `run_phase_c` and `run_post` on
-  `main`.
-- **Worktrees:** `apps/Synthetics-voice` (`m4-m5`) and `apps/Synthetics-post` (`m6-m8`) still exist, and both
-  branches are fully merged. New work can go straight on `main` in `apps/Synthetics`, or on a new branch. The
-  parallel-work rules in `docs/PARALLEL_WORK.md` were for M4 to M8 only.
-- **Services:** all Docker services are down (`just down`). Nothing is on the GPU.
-- **`/tmp`:** cleared. It is a tmpfs, so it lives in RAM. Claude session scratch had grown to 13 GB of it and
-  starved the machine; that is what killed the first bake-off.
-- **Platform:** `/home/user/code/dev/platform` has no git, so its changes exist only on disk. They are listed below.
+- **Code:** branch `phase-c-qwen-only`, worked on in the `apps/Synthetics-voice` worktree. It starts from `main`
+  (`1c070b6`) and is **not merged yet**. All tests pass (206, plus the strict xfail for the acoustics cache).
+- **Runs** (all in `apps/Synthetics/runs`):
+  - `m3-10`: the M3 record, untouched.
+  - `m5-exit`: a copy of `m3-10` with current settings; stages 4 to 8 done on all 10 meetings.
+  - `m9-e2e`: the M9 run, 20 meetings, seed 9. Started at 03:23 on Oct 20 from this worktree's code.
+- **Platform:** `/home/user/code/dev/platform` has no git, so its changes exist only on disk (listed below).
 
 ## Milestones
 
 | Milestone | State |
 |---|---|
-| M4 bake-off | **Done.** Choices confirmed and thresholds in config (`docs/VOICE_BAKEOFF.md`) |
-| M5 stages 4 and 5 | Code done and tested on fakes. **Exit not met yet:** the 10 M3 meetings through phase C, with pass, re-synthesis and swap rates. `synthetics voice-report -r <run>` reports them |
-| M6, M7, M8 | Done by the post agent (see its notes under Open items) |
-| M9 | Next: a 20-meeting unattended end-to-end run, with the coverage list in the plan |
+| M4 bake-off | **Done** (`docs/VOICE_BAKEOFF.md`) |
+| M5 stages 4 and 5 | **Done.** Exit met on Oct 20: all 10 M3 meetings pass phase C (`docs/M5_EXIT.md`) |
+| M6, M7, M8 | Done, and now checked on real audio: all 10 `m5-exit` meetings pass stages 6 to 8 |
+| M9 | **Running** (`m9-e2e`). Code added: `coverage-seed`, `run_report.json`, `synthetics report` |
 
-## Decided: phase C VRAM
+## Decisions taken on Oct 19–20
 
-Under the bake-off load, phase C peaked at 31.27 GB of 32.6 GB (0.959), above `util_limit` 0.93. The C2 sub-phase
-for MERaLiON was dropped. Phase C no longer loads `meralion-3-3b-asr` (`config/defaults/phases.yaml`), which brings
-it to about 23 GB. An utterance that fails Qwen3-ASR is re-synthesised with a new seed and checked by Qwen3-ASR
-again. The bake-off never needed MERaLiON (ASR-limited rate 0%), so `asr_limited` will be 0 unless the role is
-added back to phase C.
+- **No C2 sub-phase.** MERaLiON is out of phase C; a Qwen3-ASR failure is re-synthesised.
+- **M5 exit cut to the 10 M3 meetings** (from 50). M9 reports the meeting rates again.
+- **`voice.on_exhausted: keep_flagged`.** An utterance still failing after its last attempt is listed in
+  `kept_failed`, and the meeting passes.
+- **Stage 5:** backchannels skip SV; ASR language `en`; "yeah"/"okay" scored as "ya"/"ok"; pair check on the
+  mean cross-speaker cosine; consistency only on utterances of 3 s or more.
+- **Stage 7:** RT60 calibrated on every talker (`calibration_probes` 20).
+- **Stage 8:** aligned times clamped to the clip for clips under 1 s.
+- **M9 coverage by seed:** `synthetics coverage-seed` picked seed 9, whose 20 meetings cover every item on the
+  plan's coverage list. The sampler's distributions are unchanged.
 
-## Next steps, in order
+## Next steps
 
-1. **M5 exit:** the 10 meetings of the M3 run (`runs/m3-10` in `apps/Synthetics`, 3,783 turns) through phase C,
-   then `synthetics voice-report -r m3-10` (exits 1 below 10 meetings). This was 50 meetings, cut on Oct 19: 40
-   more scripts would take about 5 hours, and phase C on 50 meetings most of a day, without moving the utterance
-   rates. The ASR-limited rate is 0 by construction now (see above). The bake-off predicts about 100% first-pass
-   on SV, ASR and MOS, and a speaker swap in about one meeting in seven.
-2. **M9:** the 20-meeting end-to-end run, with the coverage list from the plan. Phases go A → B → B2 → C → D, one
-   at a time on the GPU. Its report includes `voice-report`, so the meeting rates from M5 (pass, swaps) rest on
-   30 meetings in all.
+1. **Watch M9.** `synthetics status -r m9-e2e --meetings` for progress. If it stops, `synthetics resume -r m9-e2e`
+   picks it up; finished stages are cache hits. When it finishes, `synthetics report -r m9-e2e` and
+   `synthetics voice-report -r m9-e2e --min-meetings 1`.
+2. **Merge `phase-c-qwen-only` into `main`** once the M9 run is judged.
+3. **M10:** run statistics for the viewer (plan §M10).
 
 ## Platform changes on disk (no git)
 
@@ -63,27 +63,29 @@ in the root `README.md`, and `just render`.
 
 ## How to bring things up
 
-- Phase C: `just up voxcpm2 qwen3-asr-1-7b wavlm-sv redimnet2-sv utmos --no-evict`, from the
-  platform dir. In normal runs, the app's `GpuLease` does this.
+- Phase C: `just up voxcpm2 qwen3-asr-1-7b wavlm-sv redimnet2-sv utmos --no-evict`, from the platform dir. It
+  loads about 21 GB. In normal runs, the app's `GpuLease` does this.
 - Prep services, needed only for NSC cleanup or `nsc nonlexical`: `deepfilternet3`, `wpe-dereverb`, `dnsmos`,
   `text-normalizer`.
 - `.env` has `NO_EVICT=1`.
 - Only build images when `free -g` shows at least 12 GB available, or no vLLM container is running.
+- Docker comes from Docker Desktop's WSL integration: if `docker` is missing in WSL, start Docker Desktop.
 
 ## Gotchas learned
 
-- **Memory:** watch `/tmp` and RAM. Claude Code kills background commands under memory pressure. The bake-off now
-  resumes: rerun the same command and it skips finished speakers (`runs/bakeoff/progress.jsonl`).
+- **Memory:** watch `/tmp` and RAM. Claude Code kills background commands under memory pressure. Other projects
+  on the machine (an Android emulator and Gradle used about 13 GB on Oct 19) count too.
+- **A run's config is frozen.** Changing a default does not reach an existing run. `m5-exit` and `m9-e2e` were
+  updated by hand to match the defaults of `08c7975`.
 - **Fakes vs real thresholds:** the stage tests pin `sv_pair_max` to 0.85/0.75 and `mos_drop_max` to 5.0. The
-  fake embedder's random voices often reach cosine 0.5, and the fake MOS is a hash of the samples. The real
-  defaults are in `stages.yaml` and `schema.py`.
-- **MOS floor:** relative to the speaker's own reference (`mos_drop_max` 0.75, absolute `mos_min` 1.0). A fixed
-  3.0 rejected whole groups of voices. The `mos` in the clean reference index is DNSMOS and is not used here.
+  fake embedder's random voices often reach cosine 0.5, and the fake MOS is a hash of the samples.
+- **Short turns behave differently from the bake-off's clips.** Backchannels, cut-offs and one-word turns caused
+  most of the M5 and post fixes. They also make up most of what stage 5 keeps flagged.
+- **MOS floor:** relative to the speaker's own reference (`mos_drop_max` 0.75, absolute `mos_min` 1.0).
 - **Known gap:** a one-word TTS slip (about WER 0.15) passes stage 5. `wer_max` 0.35 cannot separate it from
   transcript notation differences.
 - **Noisy log line:** Qwen3-ASR logs `Please install vllm[audio]` on each request. It is harmless.
-- **Seeds:** compiled VoxCPM2 output differs from uncompiled output for the same seed, though each is
-  deterministic. Any audio made before the switch on Oct 19 used the uncompiled model.
+- **Seeds:** compiled VoxCPM2 output differs from uncompiled output for the same seed.
 - **Speaker swaps:** after a reference swap, `synthesis.voices[sid].nsc_speaker` is the authoritative NSC
   speaker, not `meeting.json`.
 
@@ -95,12 +97,12 @@ in the root `README.md`, and `just render`.
 - **Overlap defaults:** default turn-taking gives about 5–8% overlap against a 10–25% target; stage 6 stretches to
   close the gap. Revisit `turn_taking.yaml`.
 - **`SOUND_LIBRARY_DIR`:** not in `.env.example` yet. Both libraries default to
-  `/home/user/code/datasets/sound-library` (`nonlexical/` from NSC, `noise/` from DEMAND + ESC-50).
-- **Fake mode with real references:** a fake-mode run passes all eight stages only with synthetic NSC references
-  (`NSC_REFS_DIR` from `tests/voice_helpers.fake_refs`). `FakeSpeakerEmbedder` reads voice tones that real NSC
-  clips do not have, so stage 5 fails on real references in fake mode. Real-model runs are unaffected.
+  `/home/user/code/datasets/sound-library`.
+- **Fake mode with real references:** a fake-mode run passes stage 5 only with synthetic NSC references.
 - **Judge pass mark:** the M3 judge threshold of 3.0 is still provisional. Gemma judges strictly and Apertus
   leniently.
+- **From M5** (`docs/M5_EXIT.md`): particles in TTS input ("(hor)" → "haw"), cut-off turns losing their last
+  word, and short-turn speakers having no consistency check.
 
 ## Licences to carry into the dataset card
 

@@ -76,3 +76,20 @@ Before fix 7, the same 10 meetings gave 7 passes, 16 clip swaps and 5 speaker sw
   failures are a large share of what is kept flagged.
 - **The bake-off's pair figures** used 3-clip centroids, so "one swap in seven meetings" was on a slightly inflated
   scale. This run's figure (2 clip swaps in 10 meetings, from the consistency check) supersedes it.
+
+## Stages 6 to 8 on the same meetings
+
+Stages 6 to 8 had only run on fakes. Before M9, they ran on these 10 meetings (`synthetics post -r m5-exit`). The
+first pass failed 1 meeting in stage 7 and 5 in stage 8; both faults are fixed in `08c7975`:
+
+- **Stage 7, RT60:** absorption was calibrated on 4 talker positions, but the check takes the median over every
+  talker. In a 14-talker room the probes said 0.52 s and all talkers 0.60 s, against a 0.50 s target.
+  `simulation.calibration_probes` is now 20, so every talker is calibrated. It costs seconds.
+- **Stage 8, alignment:** on clips of 0.12–0.40 s (11 "(mm)" backchannels and one "Ya.") the forced aligner put
+  the word up to 0.31 s past the end of the clip. Aligned times are now clamped to the clip for clips under
+  `thresholds.align_clamp_below_s` (1.0 s). Longer clips are not clamped, so a misplaced alignment still fails.
+
+After the fixes, all 10 meetings pass stages 6 to 8: realised overlap on target, RT60 within 9% of target,
+alignment coverage 100%. `manifest.jsonl` has 10 lines, and no NSC speaker appears in two splits
+(`runs/m5-exit/run_report.json`). Stages 6 and 7 took about 6 minutes for the 10 meetings, and phase D about
+10 minutes.
