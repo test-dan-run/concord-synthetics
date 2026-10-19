@@ -95,6 +95,23 @@ def test_asr_spellings_of_the_same_word_score_as_a_match():
     assert score_asr(["good"], "Right.", lex, **kw).error > 0.4
 
 
+def test_pair_check_uses_the_single_pair_scale_not_centroids():
+    from synthetics.validators.voice_checks import centroid, cross_cosine
+
+    rng = np.random.default_rng(0)
+
+    def voice(base, n):
+        e = base + 0.6 * rng.standard_normal((n, base.size))
+        return e / np.linalg.norm(e, axis=1, keepdims=True)
+
+    shared = rng.standard_normal(64)
+    a = voice(shared + rng.standard_normal(64), 60)
+    b = voice(shared + rng.standard_normal(64), 60)
+    single = float(np.mean([x @ y for x in a for y in b]))
+    assert cross_cosine(a, b) == pytest.approx(single)
+    assert float(centroid(a) @ centroid(b)) > single + 0.05  # what flagged real meetings
+
+
 def test_backchannels_and_wordless_turns_skip_the_sv_checks(tmp_path):
     rd, cfg = scripted_run(tmp_path, **{"voice.sv_min_s": 0.0})
     phase_c(rd, cfg)
@@ -266,7 +283,8 @@ class RefScoresHigher:
 @pytest.mark.parametrize(("ref", "passed"), [(4.0, True), (4.5, False)])
 def test_mos_floor_is_relative_to_the_reference(tmp_path, ref, passed):
     rd, cfg = scripted_run(tmp_path, **{"thresholds.mos_drop_max": 0.75, "thresholds.mos_min": 1.0,
-                                        "retries.tts_attempts": 1, "voice.mos_min_s": 0.0})
+                                        "retries.tts_attempts": 1, "voice.mos_min_s": 0.0,
+                                        "voice.on_exhausted": "fail"})
     phase_c(rd, cfg, **{Role.QUALITY: RefScoresHigher(ref, 3.6)})
     vv = read_model(RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0]).voice_validation, VoiceValidation)
     assert {sp.ref_mos for sp in vv.speakers} == {ref}
@@ -279,7 +297,7 @@ def test_mos_floor_is_relative_to_the_reference(tmp_path, ref, passed):
 
 def test_meeting_fails_when_an_utterance_never_passes(tmp_path):
     FirstTakeFails.seen = {}
-    rd, cfg = scripted_run(tmp_path, **{"retries.tts_attempts": 2})
+    rd, cfg = scripted_run(tmp_path, **{"retries.tts_attempts": 2, "voice.on_exhausted": "fail"})
     mid = RunPaths(rd).meeting_ids()[0]
     script = read_model(RunPaths(rd).meeting(mid).script, Script)
     word = next(w for t in script.turns for w in t.text_norm.split() if len(w) > 5)

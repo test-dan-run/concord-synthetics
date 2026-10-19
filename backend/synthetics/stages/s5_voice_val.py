@@ -13,8 +13,10 @@ Per utterance:
   reference clip (UTMOS rates real NSC voices from about 1.3 to 3.3, so a fixed floor would reject whole voices);
   skipped below `voice.mos_min_s`.
 Per speaker: within-speaker consistency (mean pairwise cosine of its utterances) in both models.
-Per pair of speakers: centroid cosine in both models; a pair is too close if either model is above its
-`thresholds.sv_pair_max`.
+Per pair of speakers: mean cosine over all utterance pairs across the two, in both models; a pair is too close if
+either model is above its `thresholds.sv_pair_max`. That threshold was fitted on single clip pairs (`calibrate-sv`),
+so the pair figure stays on that scale: a centroid cosine reads about 1/sqrt(consistency_a * consistency_b) higher,
+which flagged most real meetings.
 
 Decision: failing utterances go back to stage 4 for re-synthesis with a new seed (up to `retries.tts_attempts`
 per reference); a speaker that fails consistency, or the speaker with fewer turns in a too-close pair, gets a
@@ -48,7 +50,7 @@ from ..config.schema import Phase, Role, RunConfig, StageId
 from ..nsc.references import ReferenceIndex
 from ..nsc.settings import nsc_paths
 from ..text.singlish import Lexicon
-from ..validators.voice_checks import asr_words, centroid, consistency, score_asr
+from ..validators.voice_checks import asr_words, consistency, cross_cosine, score_asr
 from .base import StageContext, StageResult
 
 SV_ROLES = (Role.SV_WAVLM, Role.SV_REDIMNET)
@@ -91,7 +93,7 @@ class VoiceValidationStage:
     roles = (Role.ASR_PRIMARY, Role.ASR_SINGLISH, Role.SV_WAVLM, Role.SV_REDIMNET, Role.QUALITY)
     reads = ("meeting", "script", "synthesis", "utterances_dir", "speaker_splits")
     writes = ("voice_validation",)
-    version = "3"
+    version = "4"
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         th, v = cfg.thresholds, cfg.voice
@@ -182,7 +184,7 @@ class VoiceValidationStage:
                                          asr_limited=limited, short=short, mos=mos, attempts=u.attempt, seed=u.seed,
                                          passed=not reasons, reasons=reasons, skipped=skipped))
 
-        speakers, cents = [], {}
+        speakers, embs_by = [], {}
         for sid in syn.voices:
             embs = {n: np.stack(v) for n, v in utt_emb[sid].items() if v}
             if not embs:
@@ -190,20 +192,20 @@ class VoiceValidationStage:
             cons = {n: round(consistency(e), 4) for n, e in embs.items()}
             ok = all(cons[n] >= th.sv_consistency_min[n] for n in cons)
             speakers.append(SpeakerCheck(speaker_id=sid, consistency=cons, passed=ok, ref_mos=ref_mos[sid]))
-            cents[sid] = {n: centroid(e) for n, e in embs.items()}
+            embs_by[sid] = embs
         pairs = []
-        for a, c in combinations(sorted(cents), 2):
-            cos = {n: round(float(cents[a][n] @ cents[c][n]), 4) for n in cents[a] if n in cents[c]}
-            pairs.append(PairCheck(a=a, b=c, centroid_cos=cos, too_close=any(cos[n] > th.sv_pair_max[n] for n in cos)))
+        for a, c in combinations(sorted(embs_by), 2):
+            cos = {n: round(cross_cosine(embs_by[a][n], embs_by[c][n]), 4) for n in embs_by[a] if n in embs_by[c]}
+            pairs.append(PairCheck(a=a, b=c, cross_cos=cos, too_close=any(cos[n] > th.sv_pair_max[n] for n in cos)))
 
         # ---------------------------------------------------------------- decision
         n_turns = {sid: sum(t.speaker_id == sid for t in script.turns) for sid in syn.voices}
         targets: list[tuple[str, str]] = [(s.speaker_id, "inconsistent across utterances") for s in speakers if not s.passed]
         for p in pairs:
             if p.too_close:
-                worst = max(p.centroid_cos, key=lambda n: p.centroid_cos[n] - th.sv_pair_max[n])
+                worst = max(p.cross_cos, key=lambda n: p.cross_cos[n] - th.sv_pair_max[n])
                 victim = min((p.a, p.b), key=lambda s: (n_turns[s], s))
-                targets.append((victim, f"too close to {p.b if victim == p.a else p.a} ({worst} {p.centroid_cos[worst]:.2f})"))
+                targets.append((victim, f"too close to {p.b if victim == p.a else p.a} ({worst} {p.cross_cos[worst]:.2f})"))
         new_swaps, unresolved, seen = [], [], set()
         for sid, reason in targets:
             if sid in seen:

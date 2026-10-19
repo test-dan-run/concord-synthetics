@@ -343,7 +343,7 @@ class VoiceConfig(_M):
     wer_ignore_fillers: bool = True  # (um) (uh) are dropped from both sides before WER; particles stay
     sv_min_s: float = 1.0  # shorter utterances skip the SV checks (embeddings are unreliable)
     mos_min_s: float = 1.0  # shorter utterances skip the MOS floor
-    on_exhausted: Literal["fail", "keep_flagged"] = "fail"  # an utterance still failing after retries.tts_attempts
+    on_exhausted: Literal["fail", "keep_flagged"] = "keep_flagged"  # an utterance still failing after retries.tts_attempts
 
 
 class AssemblyConfig(_M):

@@ -139,7 +139,7 @@ fine-tuning application and the viewer, so the fields the UI design asks for are
 | `prompts/<speaker_id>.txt` | (plain text) | The exact rendered persona prompt from stage 2, stored verbatim (UI data contract) |
 | `script_validation.json` | `ScriptValidation` | rule check results; primary judge rationale + scores (including persona consistency per speaker); tie-breaker result; round number; feedback text |
 | `utterances/<turn_id>.wav` | (audio) | Dry audio, at the TTS sample rate, resampled to the run rate |
-| `voice_validation.json` | `VoiceValidation` | per utterance: both SV scores, WER/CER for primary and fallback ASR, `asr_limited`, MOS, attempts, seed; per speaker: consistency; per pair: centroid distance in both models; reference swaps |
+| `voice_validation.json` | `VoiceValidation` | per utterance: both SV scores, WER/CER for primary and fallback ASR, `asr_limited`, MOS, attempts, seed; per speaker: consistency; per pair: mean cross-speaker utterance cosine in both models; reference swaps; utterances kept failing |
 | `timeline.json` | `Timeline` | `segments[]`: `turn_id`, `speaker_id`, `start`, `end`, `truncated_at`, `kind`; `stats`: overlap share, backchannels/min, interruption share (UI asks for these in the manifest too) |
 | `tracks/<speaker_id>.wav` | (audio) | Dry, time-aligned per-speaker track |
 | `mixture.wav`, `mixture_mc.wav` | (audio) | Single channel; multi-channel when the mic is an array |

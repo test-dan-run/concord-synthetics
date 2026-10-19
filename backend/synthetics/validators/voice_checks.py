@@ -70,5 +70,11 @@ def consistency(embs: np.ndarray) -> float:
     return float((sims.sum() - np.trace(sims)) / (n * (n - 1)))
 
 
+def cross_cosine(a: np.ndarray, b: np.ndarray) -> float:
+    """Mean cosine over every pair of rows, one from each set (L2-normalised rows): the single-pair scale the SV
+    thresholds were fitted on."""
+    return float((a @ b.T).mean())
+
+
 def centroid(embs: np.ndarray) -> np.ndarray:
     return unit(np.asarray(embs, dtype=np.float64).mean(axis=0))

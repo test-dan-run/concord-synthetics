@@ -100,7 +100,7 @@ class SpeakerCheck(_A):
 class PairCheck(_A):
     a: str
     b: str
-    centroid_cos: dict[str, float]  # SV role -> cosine between the two speakers' utterance centroids
+    cross_cos: dict[str, float]  # SV role -> mean cosine over every utterance pair across the two speakers
     too_close: bool  # either model above its thresholds.sv_pair_max
 
 
