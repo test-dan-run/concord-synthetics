@@ -104,21 +104,25 @@ def run(run: RunOpt,
         until: Annotated[int, typer.Option(help="last stage to run (1-8)")] = 8,
         only: Annotated[str | None, typer.Option(help="one phase only: CPU, A, B, B2, C or D")] = None,
         keep_services: Annotated[bool, typer.Option(help="leave leased services running afterwards")] = False):
-    """Run the pipeline phase by phase."""
+    """Run the pipeline phase by phase, then rebuild run_report.json."""
+    from .run_report import write_run_report
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    sched.run(until=StageId(until), only=Phase(only) if only else None)
+    rep = sched.run(until=StageId(until), only=Phase(only) if only else None)
+    write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId(until)), indent=2))
 
 
 @app.command()
 def resume(run: RunOpt, keep_services: Annotated[bool, typer.Option()] = False):
     """Continue a run where it stopped (same as `run`; finished stages are cache hits)."""
+    from .run_report import write_run_report
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    sched.run(until=StageId.LABELS)
+    rep = sched.run(until=StageId.LABELS)
+    write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId.LABELS), indent=2))
 
 
@@ -149,10 +153,13 @@ def post(run: RunOpt,
     """Stages 6-8 only, on meetings that passed phase C, then the run manifest."""
     from ..artifacts.paths import RunPaths
     from .phase_post import run_post
+    from .run_report import write_run_report
     from .scheduler import RunReport, summarise
 
     rd, sched = _scheduler(run, keep_services)
-    run_post(sched, RunPaths(rd).meeting_ids(), RunReport(), until=StageId(until), only=Phase(only) if only else None)
+    rep = RunReport()
+    run_post(sched, RunPaths(rd).meeting_ids(), rep, until=StageId(until), only=Phase(only) if only else None)
+    write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId(until)), indent=2))
 
 
@@ -164,6 +171,16 @@ def manifest(run: RunOpt):
     path = write_run_manifest(_run_dir(run))
     n = sum(1 for line in path.read_text().splitlines() if line.strip())
     typer.echo(f"wrote {path}: {n} meetings")
+
+
+@app.command()
+def report(run: RunOpt):
+    """Rebuild run_report.json: drops and failures, time per phase, phase C figures, split disjointness."""
+    from .run_report import write_run_report
+
+    rep = write_run_report(_run_dir(run))
+    typer.echo(json.dumps({k: rep[k] for k in ("problems", "phase_seconds", "manifest")}, indent=2))
+    raise typer.Exit(0 if rep["manifest"]["speakers_disjoint_across_splits"] else 1)
 
 
 @app.command()
