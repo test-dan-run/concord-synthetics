@@ -128,8 +128,9 @@ def summarise_c(run_dir: Path) -> dict:
             swapped[kind] += any(sw["kind"] == kind for sw in data.get("swaps") or [])
         for u in data["utterances"]:
             utts += 1
-            first += u["attempts"] == 1 and u["passed"]
-            resynth += u["attempts"] - 1 - per_speaker.get(u["speaker_id"], 0) > 0
+            redone = u["attempts"] - 1 - per_speaker.get(u["speaker_id"], 0) > 0
+            first += u["passed"] and not redone  # a re-render after a swap is not a second take
+            resynth += redone
             limited += u["asr_limited"]
             for name, v in u["sv"].items():
                 sv.setdefault(name, []).append(v)

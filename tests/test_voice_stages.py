@@ -381,6 +381,7 @@ def test_too_close_speakers_get_a_clip_swap_then_a_speaker_swap(tmp_path):
     s = summarise_c(rd)
     assert s["clip_swaps"] == s["speaker_swaps"] == 1 and s["speaker_swap_meeting_rate"] == 1.0
     assert s["resynthesis_rate"] == 0.0  # re-renders after a swap are not re-syntheses
+    assert s["first_pass_rate"] == 1.0
 
 
 def test_meeting_fails_when_no_swap_is_left(tmp_path):
