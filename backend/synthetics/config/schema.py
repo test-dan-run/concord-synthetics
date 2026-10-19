@@ -291,6 +291,7 @@ class ThresholdsConfig(_M):
     # stage 8 quality gates
     align_coverage_min: float = 0.90  # share of text_norm words with a timing, per utterance
     align_slack_s: float = 0.05  # an aligned word may overrun its segment by this much
+    align_clamp_below_s: float = 1.0  # clips shorter than this have aligned times clamped to the clip ("mm")
 
 
 class BackendsConfig(_M):
@@ -399,7 +400,9 @@ class SimulationConfig(_M):
     calibration_iters: int = 5
     rt60_calibration_tol: float = 0.05  # relative; absorption is rescaled until the probe is this close
     rt60_tolerance: float = 0.15  # relative; stage 7 fails when the speakers' median measured RT60 is further off
-    calibration_probes: int = 4  # talker positions whose median RT60 is calibrated
+    calibration_probes: int = 20  # talker positions whose median RT60 is calibrated. 20 (the largest meeting) means
+    # every talker, the same set the RT60 check measures: with 4 of 14 talkers, m5-exit m-000008 calibrated to 0.52 s
+    # on the probes but measured 0.60 s over all talkers, against a 0.50 s target
     facing_step_deg: float = 5.0  # facing and presenter drift are quantised, bounding the impulse responses
     drift_grid_m: float = 0.1
     # levels (dBFS of active speech at the source; the room then attenuates by distance, never normalised)

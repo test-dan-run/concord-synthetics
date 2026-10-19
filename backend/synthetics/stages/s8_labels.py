@@ -4,7 +4,10 @@ labels/manifest_entry.json; the run's manifest.jsonl is rebuilt from the entries
 
 Quality gates (audio and labels must agree; any failure fails the stage):
 - the RTTM's total speech equals the sum of the timeline's segments
-- every aligned word lies inside its segment, give or take `thresholds.align_slack_s`
+- every aligned word lies inside its segment, give or take `thresholds.align_slack_s`. On clips shorter than
+  `thresholds.align_clamp_below_s`, aligned times are first clamped to the clip: on an "mm" backchannel of a few
+  tenths of a second the aligner placed the word past the end of the clip, which no word can be. Longer clips are
+  not clamped, so a late or misplaced alignment still fails the gate
 - every utterance's alignment coverage is at least `thresholds.align_coverage_min`
 """
 
@@ -15,7 +18,7 @@ from pydantic import BaseModel
 from ..artifacts.io import read_model, write_model
 from ..artifacts.labels import Timeline, Transcript
 from ..artifacts.models import Script
-from ..backends.base import Audio
+from ..backends.base import Audio, WordTiming
 from ..config.schema import LabelsConfig, Phase, Role, RunConfig, StageId
 from ..export.manifest import build_entry
 from ..export.rttm import read_rttm, write_rttm
@@ -29,6 +32,7 @@ class Stage8Config(BaseModel):
     labels: LabelsConfig
     align_coverage_min: float
     align_slack_s: float
+    align_clamp_below_s: float
     aligner: str
     run_id: str
     stages_enabled: dict[str, bool]
@@ -42,11 +46,12 @@ class LabelsStage:
     reads = ("meeting", "script", "script_validation", "synthesis", "voice_validation", "timeline", "utterances_dir",
              "render")
     writes = ("rttm", "transcript", "manifest_entry")
-    version = "1"
+    version = "2"
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         return Stage8Config(labels=cfg.labels, align_coverage_min=cfg.thresholds.align_coverage_min,
                             align_slack_s=cfg.thresholds.align_slack_s,
+                            align_clamp_below_s=cfg.thresholds.align_clamp_below_s,
                             aligner=cfg.backends.roles.get(Role.ALIGNER, ""), run_id=cfg.run_id,
                             stages_enabled={s.name.lower(): cfg.enabled(s) for s in StageId})
 
@@ -70,6 +75,8 @@ class LabelsStage:
                 audio = Audio.load(ctx.paths.utterance(seg.turn_id))
                 lang = align_language(turn.text_norm, cfg.labels.align_language, cfg.labels.align_language_cjk)
                 timings = aligner.align(audio, turn.text_norm, language=lang)
+                if audio.duration < th.align_clamp_below_s:
+                    timings = clamp(timings, audio.duration)
             u = utterance(seg, turn, timings)
             utts.append(u)
             if any(w.start < seg.start - th.align_slack_s or w.end > seg.end + th.align_slack_s or w.end < w.start
@@ -102,3 +109,12 @@ class LabelsStage:
             return StageResult(state="fail", detail="; ".join(problems)[:300], metrics=metrics)
         return StageResult(state="pass", detail=f"{len(utts)} utterances · {n_words} words · "
                                                 f"coverage ≥ {metrics['align_coverage_min']:.0%}", metrics=metrics)
+
+
+def clamp(timings: list[WordTiming], duration: float) -> list[WordTiming]:
+    """Word times limited to [0, duration] of the audio they were aligned on."""
+    out = []
+    for t in timings:
+        start = min(max(t.start, 0.0), duration)
+        out.append(WordTiming(word=t.word, start=start, end=min(max(t.end, start), duration), score=t.score))
+    return out
