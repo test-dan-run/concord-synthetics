@@ -138,8 +138,29 @@ def test_phase_c_is_a_cache_hit_the_second_time(tmp_path):
     assert tts is None or tts.calls == []
 
 
-def test_primary_asr_failures_pass_through_the_singlish_asr(tmp_path):
+PHASE_C_WITH_SINGLISH = {"phases.phases.C.roles": ["tts", "asr_primary", "asr_singlish", "sv_wavlm", "sv_redimnet",
+                                                    "quality"]}
+
+
+class Unused:
+    def transcribe(self, audio, *, language=None):
+        raise AssertionError("the Singlish ASR is not leased in phase C")
+
+
+def test_primary_asr_failures_are_resynthesised_without_the_singlish_asr(tmp_path):
     rd, cfg = scripted_run(tmp_path)
+    singlish = Unused()
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: FakeTranscriber("bad-asr", drop_every=2), Role.ASR_SINGLISH: singlish})
+    mid = RunPaths(rd).meeting_ids()[0]
+    vv = read_model(RunPaths(rd).meeting(mid).voice_validation, VoiceValidation)
+    checked = [u for u in vv.utterances if u.asr]
+    assert checked and all(len(u.asr) == 1 and u.asr[0].role == "asr_primary" for u in checked)
+    assert not any(u.asr_limited for u in vv.utterances)
+    assert StatusStore(rd).get(mid).get(StageId.VOICE).attempts > 1
+
+
+def test_primary_asr_failures_pass_through_the_singlish_asr_when_leased(tmp_path):
+    rd, cfg = scripted_run(tmp_path, **PHASE_C_WITH_SINGLISH)
     phase_c(rd, cfg, **{Role.ASR_PRIMARY: FakeTranscriber("bad-asr", drop_every=2)})
     mid = RunPaths(rd).meeting_ids()[0]
     vv = read_model(RunPaths(rd).meeting(mid).voice_validation, VoiceValidation)
@@ -151,7 +172,7 @@ def test_primary_asr_failures_pass_through_the_singlish_asr(tmp_path):
 
 
 class FirstTakeFails:
-    """Both ASRs hear nothing on the first take of every turn whose text contains `word`; later takes are fine."""
+    """The ASR hears nothing on the first take of every turn whose text contains `word`; later takes are fine."""
 
     seen: dict[str, str] = {}
 
@@ -184,7 +205,7 @@ def test_failing_utterances_are_resynthesised_with_a_new_seed(tmp_path):
     mid = RunPaths(rd).meeting_ids()[0]
     script = read_model(RunPaths(rd).meeting(mid).script, Script)
     word = unique_word(script)
-    phase_c(rd, cfg, **{Role.ASR_PRIMARY: FirstTakeFails(word), Role.ASR_SINGLISH: FirstTakeFails(word)})
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: FirstTakeFails(word)})
     mp = RunPaths(rd).meeting(mid)
     syn = read_model(mp.synthesis, Synthesis)
     vv = read_model(mp.voice_validation, VoiceValidation)
@@ -240,7 +261,7 @@ def test_meeting_fails_when_an_utterance_never_passes(tmp_path):
     script = read_model(RunPaths(rd).meeting(mid).script, Script)
     word = next(w for t in script.turns for w in t.text_norm.split() if len(w) > 5)
     asr = FirstTakeFails(word, always=True)
-    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr, Role.ASR_SINGLISH: asr})
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr})
     st = StatusStore(rd).get(mid).get(StageId.VOICE_VAL)
     assert st.state == "fail" and "still failing after the last attempt" in st.detail
     syn = read_model(RunPaths(rd).meeting(mid).synthesis, Synthesis)
@@ -254,7 +275,7 @@ def test_keep_flagged_passes_with_the_failures_listed(tmp_path):
     script = read_model(RunPaths(rd).meeting(mid).script, Script)
     word = next(w for t in script.turns for w in t.text_norm.split() if len(w) > 5)
     asr = FirstTakeFails(word, always=True)
-    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr, Role.ASR_SINGLISH: asr})
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr})
     vv = read_model(RunPaths(rd).meeting(mid).voice_validation, VoiceValidation)
     assert vv.decision == "pass" and vv.kept_failed
     assert set(vv.kept_failed) == {t.turn_id for t in script.turns if word in t.text_norm.split()}

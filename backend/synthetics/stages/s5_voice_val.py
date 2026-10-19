@@ -3,8 +3,10 @@
 Per utterance:
 - speaker similarity to the speaker's reference clip in both SV models, each against its own threshold
   (`thresholds.sv`), neither weighted above the other; skipped below `voice.sv_min_s`;
-- ASR round trip: the primary ASR first (WER on `text_norm` words, CER for short utterances); on failure the
-  Singlish ASR, and a pass there tags the utterance `asr_limited`; skipped when the turn has no words to check;
+- ASR round trip: the primary ASR (WER on `text_norm` words, CER for short utterances); skipped when the turn has
+  no words to check. A failure is re-synthesised like any other. The Singlish ASR is a fallback only when phase C
+  leases `asr_singlish` (off by default: MERaLiON leaves about 1 GB of VRAM headroom and the bake-off never
+  needed it); a pass there tags the utterance `asr_limited`;
 - MOS floor: at least `thresholds.mos_min`, and at most `thresholds.mos_drop_max` below the MOS of the speaker's
   reference clip (UTMOS rates real NSC voices from about 1.3 to 3.3, so a fixed floor would reject whole voices);
   skipped below `voice.mos_min_s`.
@@ -51,6 +53,12 @@ SV_ROLES = (Role.SV_WAVLM, Role.SV_REDIMNET)
 LAUGH_WORDS = frozenset({"ha", "haha", "hahaha", "hehe", "heh"})
 
 
+def asr_roles(cfg: RunConfig) -> tuple[Role, ...]:
+    """The primary ASR, then the Singlish fallback if phase C leases it."""
+    spec = cfg.phases.phases.get(Phase.C)
+    return (Role.ASR_PRIMARY, Role.ASR_SINGLISH) if spec and Role.ASR_SINGLISH in spec.roles else (Role.ASR_PRIMARY,)
+
+
 class Stage5Config(BaseModel):
     sv: dict[str, float]
     sv_consistency_min: dict[str, float]
@@ -93,7 +101,8 @@ class VoiceValidationStage:
                             wer_ignore_fillers=v.wer_ignore_fillers, sv_min_s=v.sv_min_s, mos_min_s=v.mos_min_s,
                             on_exhausted=v.on_exhausted, max_speaker_swaps=v.max_speaker_swaps,
                             max_clip_swaps=v.max_clip_swaps, nonlexical_tts=v.nonlexical_tts,
-                            services={r.value: cfg.backends.roles.get(r, "") for r in self.roles},
+                            services={r.value: cfg.backends.roles.get(r, "")
+                                      for r in (*asr_roles(cfg), *SV_ROLES, Role.QUALITY)},
                             lexicon_version=Lexicon.load(cfg.lexicon.path).version,
                             refs_index=ReferenceIndex.load(nsc_paths()).sha256)
 
@@ -107,9 +116,9 @@ class VoiceValidationStage:
         refs = ReferenceIndex.load(nsc_paths())
         turns = {t.turn_id: t for t in script.turns}
         b = ctx.backends
-        asr1, asr2, q = b.get(Role.ASR_PRIMARY), b.get(Role.ASR_SINGLISH), b.get(Role.QUALITY)
+        asrs = [(r, b.get(r), cfg.backends.roles.get(r, "")) for r in asr_roles(cfg)]
+        q = b.get(Role.QUALITY)
         embedders = {r.value: b.get(r) for r in SV_ROLES}
-        svc = {r: cfg.backends.roles.get(r, "") for r in (Role.ASR_PRIMARY, Role.ASR_SINGLISH)}
         laugh_ignore = LAUGH_WORDS | {w for t in vc.nonlexical_tts.values() for w in t.lower().split()}
 
         ref_emb = {sid: {name: e.embed([refs.voice_ref(va.clip_id).audio])[0] for name, e in embedders.items()}
@@ -139,21 +148,21 @@ class VoiceValidationStage:
             ref_words = asr_words(turn.text_norm, lex, ignore_fillers=vc.wer_ignore_fillers, normalised=True)
             if ref_words and u.source != "library":
                 ignore = laugh_ignore if "laugh" in turn.nonspeech else frozenset()
-                for role, client in ((Role.ASR_PRIMARY, asr1), (Role.ASR_SINGLISH, asr2)):
+                for role, client, service in asrs:
                     hyp = client.transcribe(audio, language=vc.asr_language)
                     s = score_asr(ref_words, hyp, lex, short_words=th.short_utterance_words,
                                   ignore_fillers=vc.wer_ignore_fillers, ignore=ignore)
                     short = s.short
                     ok = s.error <= (th.cer_max_short if s.short else th.wer_max)
-                    asr.append(AsrCheck(role=role.value, service=svc[role], hypothesis=hyp, wer=s.wer, cer=s.cer,
+                    asr.append(AsrCheck(role=role.value, service=service, hypothesis=hyp, wer=s.wer, cer=s.cer,
                                         passed=ok))
                     if ok:
                         limited = role == Role.ASR_SINGLISH
                         break
                 if not asr[-1].passed:
                     rate = "CER" if short else "WER"
-                    reasons.append(f"{rate} {asr[0].cer if short else asr[0].wer} / "
-                                   f"{asr[-1].cer if short else asr[-1].wer} in both ASRs")
+                    errors = " / ".join(str(a.cer if short else a.wer) for a in asr)
+                    reasons.append(f"{rate} {errors}" + (" in both ASRs" if len(asr) > 1 else ""))
             else:
                 skipped.append("asr")
                 short = len(ref_words) <= th.short_utterance_words

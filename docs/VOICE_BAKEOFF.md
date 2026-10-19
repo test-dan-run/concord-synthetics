@@ -151,13 +151,15 @@ below.
 - **vLLM audio log line:** Qwen3-ASR logs `Please install vllm[audio]` on every request. It is harmless: decoding
   falls back and returns correct text.
 
-## Open decision: phase C VRAM
+## Decision: phase C VRAM
 
-Phase C has about 1 GB of headroom. The proposal is a **C2 sub-phase for MERaLiON**, mirroring B/B2:
+Phase C had about 1 GB of headroom with MERaLiON loaded. A C2 sub-phase for MERaLiON, like B/B2, was considered
+and dropped (Oct 19). Instead, phase C no longer loads the Singlish ASR at all:
 
 - Phase C runs TTS, Qwen3-ASR, both SV models and UTMOS, about 23 GB.
-- Utterances that fail the primary ASR wait. C2 then loads MERaLiON alone to check them.
-- C2 is skipped when nothing is waiting. In this bake-off nothing would have been: the ASR-limited rate was 0%.
+- An utterance that fails Qwen3-ASR goes back to stage 4 for re-synthesis with a new seed, and Qwen3-ASR checks
+  it again, like any other stage 5 failure.
+- The bake-off's ASR-limited rate was 0% across 270 clones, so MERaLiON would have changed nothing.
 
-The other options are smaller savings (Qwen3-ASR util cannot go much below 0.19 with any KV cache left), or
-dropping the Singlish ASR from stage 5.
+The fallback still exists in stage 5. Adding `asr_singlish` back to phase C's roles in
+`config/defaults/phases.yaml` turns it on.

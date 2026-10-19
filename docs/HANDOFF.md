@@ -21,33 +21,24 @@ This is for picking up tomorrow. It covers the state after M4, the M5 code, and 
 | Milestone | State |
 |---|---|
 | M4 bake-off | **Done.** Choices confirmed and thresholds in config (`docs/VOICE_BAKEOFF.md`) |
-| M5 stages 4 and 5 | Code done and tested on fakes. **Exit not met yet:** 50 meetings through phase C on real scripts, with pass, re-synthesis and ASR-limited rates. `orchestrator/phase_c.py:summarise_c` computes them, but no CLI command calls it yet |
+| M5 stages 4 and 5 | Code done and tested on fakes. **Exit not met yet:** 50 meetings through phase C on real scripts, with pass, re-synthesis and swap rates. `orchestrator/phase_c.py:summarise_c` computes them, but no CLI command calls it yet |
 | M6, M7, M8 | Done by the post agent (see its notes under Open items) |
 | M9 | Next: a 20-meeting unattended end-to-end run, with the coverage list in the plan |
 
-## Decision waiting: phase C VRAM
+## Decided: phase C VRAM
 
-Under the bake-off load, phase C peaked at 31.27 GB of 32.6 GB (0.959), above `util_limit` 0.93. Compiled TTS has
-since added about 0.5 GB. On paper, `just vram` says 0.907, so the stack will start it, but the margin is about
-1 GB.
-
-**Proposal:** a C2 sub-phase for `meralion-3-3b-asr`, like B/B2.
-
-- **Phase C:** TTS, Qwen3-ASR, both SV models and UTMOS, about 23 GB.
-- **C2:** loads MERaLiON only for utterances that failed Qwen3-ASR, and is skipped when there are none. The
-  bake-off had none.
-- **Where the change goes:** `orchestrator/phase_c.py`, `stages/s5_voice_val.py` (an utterance waits on the
-  Singlish check instead of deciding at once) and `config/defaults/phases.yaml`.
-
-Decide this before the M5 exit run.
+Under the bake-off load, phase C peaked at 31.27 GB of 32.6 GB (0.959), above `util_limit` 0.93. The C2 sub-phase
+for MERaLiON was dropped. Phase C no longer loads `meralion-3-3b-asr` (`config/defaults/phases.yaml`), which brings
+it to about 23 GB. An utterance that fails Qwen3-ASR is re-synthesised with a new seed and checked by Qwen3-ASR
+again. The bake-off never needed MERaLiON (ASR-limited rate 0%), so `asr_limited` will be 0 unless the role is
+added back to phase C.
 
 ## Next steps, in order
 
-1. Decide on C2, and build it if wanted.
-2. **M5 exit:** 50 meetings through phase C on real scripts from the M3 run. Report the pass, re-synthesis,
-   ASR-limited and swap rates. The bake-off predicts about 100% first-pass on SV, ASR and MOS, and a speaker swap
-   in about one meeting in seven.
-3. **M9:** the 20-meeting end-to-end run, with the coverage list from the plan. Phases go A → B → B2 → C → D, one
+1. **M5 exit:** 50 meetings through phase C on real scripts from the M3 run. Report the pass, re-synthesis and
+   swap rates. The ASR-limited rate is 0 by construction now (see above). The bake-off predicts about 100%
+   first-pass on SV, ASR and MOS, and a speaker swap in about one meeting in seven.
+2. **M9:** the 20-meeting end-to-end run, with the coverage list from the plan. Phases go A → B → B2 → C → D, one
    at a time on the GPU.
 
 ## Platform changes on disk (no git)
@@ -58,7 +49,7 @@ Seven new services, all registered with weights fetched and images built:
 |---|---|---|
 | `voxcpm2` | 8410 | TTS; torch.compile on (needs gcc and python3.12-dev in the image); about 80 s to become healthy |
 | `qwen3-asr-1-7b` | 8106 | vLLM, util 0.22; weights pulled by `just up` (hf-cache is owned by root) |
-| `meralion-3-3b-asr` | 8107 | custom transformers server |
+| `meralion-3-3b-asr` | 8107 | custom transformers server; not used by phase C since Oct 19 |
 | `wavlm-sv` | 8404 | WavLM-Large ECAPA; input cut at 20 s |
 | `redimnet2-sv` | 8405 | input cut at 20 s |
 | `utmos` | 8406 | CPU |
@@ -69,7 +60,7 @@ in the root `README.md`, and `just render`.
 
 ## How to bring things up
 
-- Phase C: `just up voxcpm2 qwen3-asr-1-7b meralion-3-3b-asr wavlm-sv redimnet2-sv utmos --no-evict`, from the
+- Phase C: `just up voxcpm2 qwen3-asr-1-7b wavlm-sv redimnet2-sv utmos --no-evict`, from the
   platform dir. In normal runs, the app's `GpuLease` does this.
 - Prep services, needed only for NSC cleanup or `nsc nonlexical`: `deepfilternet3`, `wpe-dereverb`, `dnsmos`,
   `text-normalizer`.
