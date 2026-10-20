@@ -161,7 +161,12 @@ export function FloorPlan({ m, rows, selected, onSelect, layers }: { m: MeetingS
             stroke={sel?.person.position_type === "remote" ? C.focus : C.muted}
             strokeWidth={sel?.person.position_type === "remote" ? 2 : 1}
           />
-          <PlateLabel x={X(m.speakerphone.position[0]) + 12} y={Y(m.speakerphone.position[1]) - 14} anchor="start">
+          {/* on the side away from the mic, so the two labels never meet */}
+          <PlateLabel
+            x={X(m.speakerphone.position[0]) + (m.speakerphone.position[0] < mic[0] ? -12 : 12)}
+            y={Y(m.speakerphone.position[1]) - 14}
+            anchor={m.speakerphone.position[0] < mic[0] ? "end" : "start"}
+          >
             {`Speakerphone · ${m.speakerphone.remote_speakers.join(", ")}`}
           </PlateLabel>
         </g>
@@ -176,9 +181,18 @@ export function FloorPlan({ m, rows, selected, onSelect, layers }: { m: MeetingS
       {sel?.person.mouth && (
         <g>
           <line x1={X(sel.person.mouth[0])} y1={Y(sel.person.mouth[1])} x2={mx} y2={my} stroke={C.focus} strokeWidth={1.5} strokeDasharray="5 4" />
-          <PlateLabel x={(X(sel.person.mouth[0]) + mx) / 2} y={(Y(sel.person.mouth[1]) + my) / 2} color={C.focus}>
-            {metres(sel.micDistance)}
-          </PlateLabel>
+          {(() => {
+            // beside the path, not on it, so a short path keeps its seat and the mic visible
+            const sx = X(sel.person.mouth[0]);
+            const sy = Y(sel.person.mouth[1]);
+            const len = Math.hypot(mx - sx, my - sy) || 1;
+            const off = 16;
+            return (
+              <PlateLabel x={(sx + mx) / 2 - ((my - sy) / len) * off} y={(sy + my) / 2 + ((mx - sx) / len) * off} color={C.focus}>
+                {metres(sel.micDistance)}
+              </PlateLabel>
+            );
+          })()}
         </g>
       )}
 

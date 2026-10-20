@@ -1,0 +1,392 @@
+{
+  "schema_version": "1",
+  "meeting_id": "m-000005",
+  "seed": 2768950738,
+  "split": "train",
+  "room_class": "small",
+  "n_speakers": 4,
+  "fit_resamples": 0,
+  "room": {
+    "length": 3.5721,
+    "width": 3.4475,
+    "height": 2.9373,
+    "front_wall": "W",
+    "walls": {
+      "N": "plasterboard",
+      "E": "glass",
+      "S": "plasterboard",
+      "W": "plasterboard"
+    },
+    "floor": "vinyl",
+    "ceiling": "acoustic_tile",
+    "rt60_target": 0.4012,
+    "screen": {
+      "wall": "W",
+      "center": 2.0033,
+      "width": 2.175,
+      "bottom": 0.9,
+      "top": 2.1
+    }
+  },
+  "table": {
+    "shape": "rect",
+    "center": [
+      1.6872,
+      1.6024
+    ],
+    "length": 1.2,
+    "width": 0.9276,
+    "height": 0.7471,
+    "seat_pitch": 0.702,
+    "capacity": 4,
+    "slots": [
+      {
+        "index": 0,
+        "label": "N",
+        "side": "N",
+        "edge_s": 0.6,
+        "edge_xy": [
+          1.6872,
+          2.0662
+        ],
+        "seat_xy": [
+          1.6872,
+          2.3032
+        ],
+        "occupied_by": null
+      },
+      {
+        "index": 1,
+        "label": "E",
+        "side": "E",
+        "edge_s": 0.4638,
+        "edge_xy": [
+          2.2872,
+          1.6024
+        ],
+        "seat_xy": [
+          2.5242,
+          1.6024
+        ],
+        "occupied_by": "S03"
+      },
+      {
+        "index": 2,
+        "label": "S",
+        "side": "S",
+        "edge_s": 0.6,
+        "edge_xy": [
+          1.6872,
+          1.1386
+        ],
+        "seat_xy": [
+          1.6872,
+          0.9016
+        ],
+        "occupied_by": "S01"
+      },
+      {
+        "index": 3,
+        "label": "W",
+        "side": "W",
+        "edge_s": 0.4638,
+        "edge_xy": [
+          1.0872,
+          1.6024
+        ],
+        "seat_xy": [
+          0.8502,
+          1.6024
+        ],
+        "occupied_by": null
+      }
+    ]
+  },
+  "wall_chairs": [],
+  "people": [
+    {
+      "speaker_id": "S01",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 2
+      },
+      "mouth": [
+        1.6872,
+        0.9016,
+        1.1545
+      ],
+      "facing_deg": 108.3465,
+      "presenter": null,
+      "is_chair": true,
+      "turn_share": 0.48,
+      "nsc_speaker": {
+        "speaker": "00862488",
+        "split": "train",
+        "gender": "F",
+        "age": "4X",
+        "ethnicity": "MALAY",
+        "first_language": "MALAY",
+        "languages": [
+          "MALAY",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Syafiqah bin Rahman",
+        "role": "project lead",
+        "seniority": "senior",
+        "verbosity": "high",
+        "gender": "F",
+        "age_band": "4X",
+        "ethnicity": "MALAY",
+        "l1": "Malay",
+        "accent": "Singapore English, Malay L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Malay"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S02",
+      "position_type": "presenter",
+      "wall_reason": null,
+      "seat": null,
+      "mouth": [
+        0.8518,
+        2.9073,
+        1.6685
+      ],
+      "facing_deg": -57.3753,
+      "presenter": {
+        "spot": [
+          0.8518,
+          2.9073
+        ],
+        "drift_radius": 1.0,
+        "facing_screen_p": 0.3,
+        "return_seat": null
+      },
+      "is_chair": false,
+      "turn_share": 0.24,
+      "nsc_speaker": {
+        "speaker": "00862428",
+        "split": "train",
+        "gender": "M",
+        "age": "3X",
+        "ethnicity": "CHINESE",
+        "first_language": "ENGLISH",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Wei Ming Ho",
+        "role": "QA engineer",
+        "seniority": "mid",
+        "verbosity": "low",
+        "gender": "M",
+        "age_band": "3X",
+        "ethnicity": "CHINESE",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "low",
+        "switch_languages": [
+          "Mandarin",
+          "Cantonese"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S03",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 1
+      },
+      "mouth": [
+        2.5242,
+        1.6024,
+        1.1534
+      ],
+      "facing_deg": 155.8642,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.16,
+      "nsc_speaker": {
+        "speaker": "00862481",
+        "split": "train",
+        "gender": "M",
+        "age": "1X",
+        "ethnicity": "CHINESE",
+        "first_language": "ENGLISH",
+        "languages": [
+          "MALAY",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Chee Keong Ng",
+        "role": "intern",
+        "seniority": "intern",
+        "verbosity": "high",
+        "gender": "M",
+        "age_band": "1X",
+        "ethnicity": "CHINESE",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Malay",
+          "Hokkien",
+          "Cantonese"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S04",
+      "position_type": "presenter",
+      "wall_reason": null,
+      "seat": null,
+      "mouth": [
+        0.5909,
+        1.066,
+        1.6815
+      ],
+      "facing_deg": 26.0716,
+      "presenter": {
+        "spot": [
+          0.5909,
+          1.066
+        ],
+        "drift_radius": 1.0,
+        "facing_screen_p": 0.3,
+        "return_seat": {
+          "kind": "table",
+          "index": 0
+        }
+      },
+      "is_chair": false,
+      "turn_share": 0.12,
+      "nsc_speaker": {
+        "speaker": "00862236",
+        "split": "train",
+        "gender": "M",
+        "age": "1X",
+        "ethnicity": "MALAY",
+        "first_language": "MALAY",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Hakim bin Osman",
+        "role": "intern",
+        "seniority": "intern",
+        "verbosity": "low",
+        "gender": "M",
+        "age_band": "1X",
+        "ethnicity": "MALAY",
+        "l1": "Malay",
+        "accent": "Singapore English, Malay L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Malay",
+          "Mandarin"
+        ]
+      }
+    }
+  ],
+  "mic": {
+    "type": "laptop",
+    "position": [
+      1.6872,
+      1.3002,
+      0.9158
+    ],
+    "channels": 1,
+    "array_geometry": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "near_speaker": "S01"
+  },
+  "speakerphone": null,
+  "acoustics": {
+    "rt60": 0.4012,
+    "snr_db": 26.6314,
+    "noise_sources": [
+      {
+        "kind": "hvac",
+        "position": [
+          1.7861,
+          1.7238,
+          2.8873
+        ]
+      },
+      {
+        "kind": "keyboard",
+        "position": [
+          1.6872,
+          1.3002,
+          0.7671
+        ]
+      }
+    ],
+    "events": {
+      "door": 0,
+      "chair": 1,
+      "cup": 0,
+      "paper": 1
+    },
+    "events_per_10min": 2.2012,
+    "orientation_max_deg": 60.0,
+    "orientation_resample_p": 0.3
+  },
+  "device_chain": {
+    "agc": true,
+    "band_limit_hz": 6958.1501,
+    "codec_kbps": 29,
+    "clipping_level": null,
+    "aec_artifacts": false
+  },
+  "dynamics": {
+    "meeting_type": "working session",
+    "topic": "NDP volunteer roster and logistics for the community club",
+    "duration_min": 10.2068,
+    "n_turns_target": 97,
+    "zipf_exponent": 1.0,
+    "turn_shares": {
+      "S01": 0.48,
+      "S02": 0.24,
+      "S03": 0.16,
+      "S04": 0.12
+    },
+    "chair_id": "S01",
+    "presentation": {
+      "presenters": [
+        "S02",
+        "S04"
+      ],
+      "start_turn": 15,
+      "end_turn": 30,
+      "returns": {
+        "S02": null,
+        "S04": {
+          "kind": "table",
+          "index": 0
+        }
+      }
+    },
+    "hybrid": false,
+    "remote_speakers": []
+  }
+}

@@ -90,3 +90,20 @@ viewer-contract run_id:
 # the Room Config Viewer: API (and frontend/dist when built) on http://127.0.0.1:8610
 viewer *flags:
     {{cli}} viewer {{flags}}
+
+# viewer frontend: install, build (frontend/dist), unit tests
+viewer-setup:
+    cd frontend && npm install
+viewer-build:
+    cd frontend && npm run build
+viewer-test:
+    cd frontend && npm run test --silent
+
+# viewer API with reload + Vite dev server; Ctrl-C stops both
+viewer-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'kill 0' EXIT INT TERM
+    {{cli}} viewer --reload &
+    (cd frontend && npm run dev -- --port ${SYNTHETICS_WEB_PORT:-5174}) &
+    wait

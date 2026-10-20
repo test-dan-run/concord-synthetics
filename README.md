@@ -1,8 +1,9 @@
 # Synthetics
 
 Synthetic Singapore meeting audio with full labels. See `DESIGN_DOCUMENT.md` for the pipeline and
-`IMPLEMENTATION_PLAN.md` for the build plan. Built so far: milestones M1 to M3 (stages 1 to 3), on the M0
-foundations they need (config, artifacts, stage contract, backends, orchestrator).
+`IMPLEMENTATION_PLAN.md` for the build plan, `docs/OUTPUT_CONTRACT.md` for the files a run hands over, and
+`docs/HANDOFF.md` for the current state. Built: milestones M0 to M13, that is all eight stages, end-to-end
+orchestration, and the Room Config Viewer (read-only API plus web UI).
 
 ## Setup
 
@@ -20,6 +21,8 @@ phase is a lease through `platform/tools/stack.py up/down`.
 | A | generator | `qwen-sea-lion-v4-5-27b-it` (NVFP4A16, quantised locally) |
 | B | judge_primary | `gemma-sea-lion-v4-27b-it-nvfp4` |
 | B2 | judge_tiebreak | `apertus-sea-lion-v4-8b-it` (own sub-phase: it does not fit beside the 27B judge) |
+| C | tts, asr_primary, sv_wavlm, sv_redimnet, quality | `voxcpm2`, `qwen3-asr-1-7b`, `wavlm-sv`, `redimnet2-sv`, `utmos` |
+| D | aligner | `qwen3-forced-aligner` |
 | prep | enhancer, dereverb, ref_quality | `deepfilternet3`, `wpe-dereverb`, `dnsmos` (CPU) |
 
 ## Running
@@ -35,6 +38,18 @@ Every command is idempotent: a stage is skipped when status.json holds a pass wi
 (stage version, config slice, input hashes). Set `--set backends.mode=fake` on `init-run` for a run with fake
 backends.
 
+## Room Config Viewer
+
+A read-only web UI over `runs/` (`UI_DESIGN_DOCUMENT.md`): a meeting browser, each meeting's floor plan,
+elevation, persona prompts and speakers, and the run's sampled distributions against `config.yaml`.
+
+```bash
+just viewer-setup               # npm install in frontend/ (once)
+just viewer-build               # build frontend/dist, which the API serves
+just viewer                     # http://127.0.0.1:8610 (SYNTHETICS_PORT); reads SYNTHETICS_RUNS
+just viewer-dev                 # API with reload + Vite dev server on http://127.0.0.1:5174
+```
+
 ## Milestone checks
 
 - **M1** `just sampler-report 1000`: stage 1 rates against every configured target (exits 1 on a miss).
@@ -46,6 +61,12 @@ backends.
   `just judge-set <run>` writes `runs/<run>/judge_sets/judge_set_1/` (rating sheet, scripts, instructions);
   `just fit-judge <filled sheet>` fits `thresholds.judge_pass` / `judge_band` into a YAML overlay for
   `init-run --config`.
+- **M10** `just viewer-contract <run>`: every field of the UI data contract, on every meeting
+  (`tests/test_viewer_contract.py` runs it on a fake run, and on `runs/m9-e2e` when present).
+- **M11** `tests/test_ablation.py` switches stages 3, 5 and 7 off and runs to the manifest; the acoustics
+  cache test in `tests/test_post.py` covers run revision 2.
+- **M12** `tests/test_viewer_api.py`: every route, the whitelist, traversal attempts, no write routes.
+- **M13** `just viewer-test` (vitest), then look at the three screens against `assets/mockups/png/*`.
 
 ## Departures from the plan, and why
 
