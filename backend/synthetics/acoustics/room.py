@@ -11,11 +11,16 @@ to the sampled RT60, and impulse responses per source pose.
   is therefore the directive ISM part up to `ism_max_order`, plus, in rooms that use ray tracing, the late part of
   an omnidirectional source at the same position (hybrid ISM + ray tracing, minus omnidirectional ISM), scaled by
   the directivity's power factor. Rooms without ray tracing use ISM alone, to an order long enough for the T20 fit.
+- Ray tracing is random. Each source position is traced in a room of its own, seeded from the meeting seed and the
+  position, so a pose has the same impulse response in every call. Calibration, the RT60 check and the render then
+  all see the same responses. (Traced together, the sources shared one random stream, and in `m9-e2e` m-000020 the
+  same six talker poses measured 0.667 s in calibration and 0.78 s in the check.)
 """
 
 from __future__ import annotations
 
 import math
+import zlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -141,11 +146,14 @@ class RoomModel:
         return CardioidFamily(orientation=DirectionVector(azimuth=facing_deg, colatitude=90.0, degrees=True),
                               p=self.directivity_p)
 
-    def _compute(self, room: pra.ShoeBox) -> list[list[np.ndarray]]:
+    def _compute(self, room: pra.ShoeBox, seed: int) -> list[list[np.ndarray]]:
         # both generators: wall scattering in C++, and the numpy one that turns ray-tracing histograms into noise
-        pra.random.seed(numpy=self.seed, libroom=self.seed)
+        pra.random.seed(numpy=seed, libroom=seed)
         room.compute_rir()
         return room.rir  # [mic][source]
+
+    def _position_seed(self, pk: tuple) -> int:
+        return (self.seed + zlib.crc32(repr(pk).encode())) % 2**32
 
     def rirs(self, poses: list[Pose]) -> dict[tuple, np.ndarray]:
         """Pose key -> (n_mics, n) float32 impulse responses, truncated after the reverberant tail."""
@@ -155,18 +163,19 @@ class RoomModel:
         early_room = self._room(order=self.ism_order, ray_tracing=False)
         for p in uniq:
             early_room.add_source(list(p.xyz), directivity=None if p.facing_deg is None else self._directivity(p.facing_deg))
-        early = self._compute(early_room)
+        early = self._compute(early_room, self.seed)  # ISM alone is deterministic
         late: dict[tuple, list[np.ndarray]] = {}
         if self.ray_tracing:
             positions = list({tuple(round(c, 3) for c in p.xyz): p.xyz for p in uniq}.items())
-            hyb_room = self._room(order=self.ism_order, ray_tracing=True)
             ism_room = self._room(order=self.ism_order, ray_tracing=False)
             for _, xyz in positions:
-                hyb_room.add_source(list(xyz))
                 ism_room.add_source(list(xyz))
-            hyb, ism = self._compute(hyb_room), self._compute(ism_room)
-            for j, (pk, _) in enumerate(positions):
-                late[pk] = [_minus(hyb[mi][j], ism[mi][j]) for mi in range(self.mics.shape[1])]
+            ism = self._compute(ism_room, self.seed)
+            for j, (pk, xyz) in enumerate(positions):
+                hyb_room = self._room(order=self.ism_order, ray_tracing=True)
+                hyb_room.add_source(list(xyz))
+                hyb = self._compute(hyb_room, self._position_seed(pk))
+                late[pk] = [_minus(hyb[mi][0], ism[mi][j]) for mi in range(self.mics.shape[1])]
         n_keep = int(round((self.sim.rir_tail_factor * self.m.room.rt60_target + 0.05) * self.fs))
         out = {}
         for j, p in enumerate(uniq):

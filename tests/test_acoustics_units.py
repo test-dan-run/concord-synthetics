@@ -34,6 +34,20 @@ def test_calibrated_rt60_matches_the_target(cfg, splits, room_class, seed):
     assert model.ray_tracing == (room_class == "large")
 
 
+def test_a_ray_traced_pose_gets_the_same_response_whatever_else_is_traced(cfg, splits):
+    # calibration traces a few talkers, the render traces every pose and noise source: the shared poses must agree,
+    # or the RT60 check measures other responses than calibration did (m9-e2e m-000020: 0.667 s against 0.78 s)
+    m, c = _meeting(cfg, splits, "large", 2)
+    model = RoomModel(m, c.simulation, SR, seed=7)
+    talkers = [Pose(tuple(p.mouth), p.facing_deg) for p in m.people if p.mouth]
+    assert model.ray_tracing and len(talkers) >= 3
+    alone = model.rirs(talkers[:1])
+    together = model.rirs(talkers[::-1] + [Pose((1.0, 1.0, 1.0), None)])
+    k = talkers[0].key()
+    assert np.array_equal(alone[k], together[k])
+    assert rt60_mid(alone[k][0], SR) == rt60_mid(together[k][0], SR)
+
+
 def test_absorption_scaling_stays_below_one_and_keeps_order():
     prof = np.array([0.02, 0.05, 0.3, 0.8])
     for s in (0.5, 1.0, 4.0, 20.0):
