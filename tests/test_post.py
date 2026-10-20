@@ -359,3 +359,11 @@ def test_the_scheduler_runs_all_eight_stages_and_then_has_nothing_to_do(tmp_path
     leases.clear()
     again = PhaseScheduler(rd, cfg, lease_factory=factory).run(until=StageId.LABELS)
     assert {o.state for o in again.outcomes} <= {"cached"} and leases == []
+
+
+def test_stage8_clamps_alignments_only_on_short_clips():
+    from synthetics.stages.s8_labels import clamp
+
+    w = [WordTiming("mm", 0.16, 0.32, 0.3)]
+    assert clamp(w, 0.13) == [WordTiming("mm", 0.13, 0.13, 0.3)]
+    assert clamp([WordTiming("a", -0.02, 0.1, 0.9)], 0.5) == [WordTiming("a", 0.0, 0.1, 0.9)]

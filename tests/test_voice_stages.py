@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 import yaml
 
+from conftest import ROOT
 from helpers import fake_run
 from synthetics.artifacts.io import read_model, write_model
 from synthetics.artifacts.models import Script
@@ -83,6 +84,59 @@ def test_synthetic_sounds(tag):
     assert np.array_equal(a.samples, synthetic(tag, 16000, 3).samples)
 
 
+def test_asr_spellings_of_the_same_word_score_as_a_match():
+    from synthetics.text.singlish import Lexicon
+    from synthetics.validators.voice_checks import score_asr
+
+    lex = Lexicon.load(ROOT / "backend/synthetics/config/defaults/singlish_lexicon.yaml")
+    kw = {"short_words": 3, "ignore_fillers": True}
+    assert score_asr(["ya"], "Yeah.", lex, **kw).error == 0.0
+    assert score_asr(["ok", "lah"], "Okay lah.", lex, **kw).error == 0.0
+    assert score_asr(["good"], "Right.", lex, **kw).error > 0.4
+
+
+def test_pair_check_uses_the_single_pair_scale_not_centroids():
+    from synthetics.validators.voice_checks import centroid, cross_cosine
+
+    rng = np.random.default_rng(0)
+
+    def voice(base, n):
+        e = base + 0.6 * rng.standard_normal((n, base.size))
+        return e / np.linalg.norm(e, axis=1, keepdims=True)
+
+    shared = rng.standard_normal(64)
+    a = voice(shared + rng.standard_normal(64), 60)
+    b = voice(shared + rng.standard_normal(64), 60)
+    single = float(np.mean([x @ y for x in a for y in b]))
+    assert cross_cosine(a, b) == pytest.approx(single)
+    assert float(centroid(a) @ centroid(b)) > single + 0.05  # what flagged real meetings
+
+
+@pytest.mark.parametrize("min_s", [0.0, 1000.0])
+def test_consistency_uses_only_long_enough_utterances(tmp_path, min_s):
+    rd, cfg = scripted_run(tmp_path, **{"voice.consistency_min_s": min_s})
+    phase_c(rd, cfg)
+    vv = read_model(RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0]).voice_validation, VoiceValidation)
+    assert vv.decision == "pass" and vv.speakers
+    scored = {sid: sum(1 for u in vv.utterances if u.speaker_id == sid and u.sv) for sid in {s.speaker_id for s in vv.speakers}}
+    for sp in vv.speakers:
+        if min_s == 0.0 and scored[sp.speaker_id] >= cfg.voice.consistency_min_utts:
+            assert set(sp.consistency) == {"sv_wavlm", "sv_redimnet"} and sp.consistency_utts == scored[sp.speaker_id]
+        if min_s == 1000.0:  # no utterance is that long: every speaker check is skipped, and passes
+            assert sp.consistency == {} and sp.consistency_utts == 0 and sp.passed
+
+
+def test_backchannels_and_wordless_turns_skip_the_sv_checks(tmp_path):
+    rd, cfg = scripted_run(tmp_path, **{"voice.sv_min_s": 0.0})
+    phase_c(rd, cfg)
+    mp = RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0])
+    turns = {t.turn_id: t for t in read_model(mp.script, Script).turns}
+    vv = read_model(mp.voice_validation, VoiceValidation)
+    bc = [u for u in vv.utterances if turns[u.turn_id].interaction == "backchannel"]
+    assert bc and all("sv" in u.skipped and not u.sv for u in bc)
+    assert all(u.sv for u in vv.utterances if turns[u.turn_id].interaction != "backchannel" and "asr" not in u.skipped)
+
+
 def test_sound_library_picks_gender_matched_clips(tmp_path):
     lib_dir = tmp_path / "nonlexical"
     (lib_dir / "laugh").mkdir(parents=True)
@@ -138,8 +192,29 @@ def test_phase_c_is_a_cache_hit_the_second_time(tmp_path):
     assert tts is None or tts.calls == []
 
 
-def test_primary_asr_failures_pass_through_the_singlish_asr(tmp_path):
+PHASE_C_WITH_SINGLISH = {"phases.phases.C.roles": ["tts", "asr_primary", "asr_singlish", "sv_wavlm", "sv_redimnet",
+                                                    "quality"]}
+
+
+class Unused:
+    def transcribe(self, audio, *, language=None):
+        raise AssertionError("the Singlish ASR is not leased in phase C")
+
+
+def test_primary_asr_failures_are_resynthesised_without_the_singlish_asr(tmp_path):
     rd, cfg = scripted_run(tmp_path)
+    singlish = Unused()
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: FakeTranscriber("bad-asr", drop_every=2), Role.ASR_SINGLISH: singlish})
+    mid = RunPaths(rd).meeting_ids()[0]
+    vv = read_model(RunPaths(rd).meeting(mid).voice_validation, VoiceValidation)
+    checked = [u for u in vv.utterances if u.asr]
+    assert checked and all(len(u.asr) == 1 and u.asr[0].role == "asr_primary" for u in checked)
+    assert not any(u.asr_limited for u in vv.utterances)
+    assert StatusStore(rd).get(mid).get(StageId.VOICE).attempts > 1
+
+
+def test_primary_asr_failures_pass_through_the_singlish_asr_when_leased(tmp_path):
+    rd, cfg = scripted_run(tmp_path, **PHASE_C_WITH_SINGLISH)
     phase_c(rd, cfg, **{Role.ASR_PRIMARY: FakeTranscriber("bad-asr", drop_every=2)})
     mid = RunPaths(rd).meeting_ids()[0]
     vv = read_model(RunPaths(rd).meeting(mid).voice_validation, VoiceValidation)
@@ -151,7 +226,7 @@ def test_primary_asr_failures_pass_through_the_singlish_asr(tmp_path):
 
 
 class FirstTakeFails:
-    """Both ASRs hear nothing on the first take of every turn whose text contains `word`; later takes are fine."""
+    """The ASR hears nothing on the first take of every turn whose text contains `word`; later takes are fine."""
 
     seen: dict[str, str] = {}
 
@@ -184,7 +259,7 @@ def test_failing_utterances_are_resynthesised_with_a_new_seed(tmp_path):
     mid = RunPaths(rd).meeting_ids()[0]
     script = read_model(RunPaths(rd).meeting(mid).script, Script)
     word = unique_word(script)
-    phase_c(rd, cfg, **{Role.ASR_PRIMARY: FirstTakeFails(word), Role.ASR_SINGLISH: FirstTakeFails(word)})
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: FirstTakeFails(word)})
     mp = RunPaths(rd).meeting(mid)
     syn = read_model(mp.synthesis, Synthesis)
     vv = read_model(mp.voice_validation, VoiceValidation)
@@ -222,7 +297,8 @@ class RefScoresHigher:
 @pytest.mark.parametrize(("ref", "passed"), [(4.0, True), (4.5, False)])
 def test_mos_floor_is_relative_to_the_reference(tmp_path, ref, passed):
     rd, cfg = scripted_run(tmp_path, **{"thresholds.mos_drop_max": 0.75, "thresholds.mos_min": 1.0,
-                                        "retries.tts_attempts": 1, "voice.mos_min_s": 0.0})
+                                        "retries.tts_attempts": 1, "voice.mos_min_s": 0.0,
+                                        "voice.on_exhausted": "fail"})
     phase_c(rd, cfg, **{Role.QUALITY: RefScoresHigher(ref, 3.6)})
     vv = read_model(RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0]).voice_validation, VoiceValidation)
     assert {sp.ref_mos for sp in vv.speakers} == {ref}
@@ -235,12 +311,12 @@ def test_mos_floor_is_relative_to_the_reference(tmp_path, ref, passed):
 
 def test_meeting_fails_when_an_utterance_never_passes(tmp_path):
     FirstTakeFails.seen = {}
-    rd, cfg = scripted_run(tmp_path, **{"retries.tts_attempts": 2})
+    rd, cfg = scripted_run(tmp_path, **{"retries.tts_attempts": 2, "voice.on_exhausted": "fail"})
     mid = RunPaths(rd).meeting_ids()[0]
     script = read_model(RunPaths(rd).meeting(mid).script, Script)
     word = next(w for t in script.turns for w in t.text_norm.split() if len(w) > 5)
     asr = FirstTakeFails(word, always=True)
-    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr, Role.ASR_SINGLISH: asr})
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr})
     st = StatusStore(rd).get(mid).get(StageId.VOICE_VAL)
     assert st.state == "fail" and "still failing after the last attempt" in st.detail
     syn = read_model(RunPaths(rd).meeting(mid).synthesis, Synthesis)
@@ -254,7 +330,7 @@ def test_keep_flagged_passes_with_the_failures_listed(tmp_path):
     script = read_model(RunPaths(rd).meeting(mid).script, Script)
     word = next(w for t in script.turns for w in t.text_norm.split() if len(w) > 5)
     asr = FirstTakeFails(word, always=True)
-    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr, Role.ASR_SINGLISH: asr})
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr})
     vv = read_model(RunPaths(rd).meeting(mid).voice_validation, VoiceValidation)
     assert vv.decision == "pass" and vv.kept_failed
     assert set(vv.kept_failed) == {t.turn_id for t in script.turns if word in t.text_norm.split()}
@@ -302,6 +378,10 @@ def test_too_close_speakers_get_a_clip_swap_then_a_speaker_swap(tmp_path):
     assert sp.to_speaker not in {p["nsc_speaker"]["speaker"] for p in people}
     turns = [u for u in syn.utterances if u.speaker_id == sp.speaker_id]
     assert all(u.attempt == 3 for u in turns)  # made with the first clip, the second clip, the new speaker
+    s = summarise_c(rd)
+    assert s["clip_swaps"] == s["speaker_swaps"] == 1 and s["speaker_swap_meeting_rate"] == 1.0
+    assert s["resynthesis_rate"] == 0.0  # re-renders after a swap are not re-syntheses
+    assert s["first_pass_rate"] == 1.0
 
 
 def test_meeting_fails_when_no_swap_is_left(tmp_path):
@@ -310,6 +390,8 @@ def test_meeting_fails_when_no_swap_is_left(tmp_path):
     mid = RunPaths(rd).meeting_ids()[0]
     st = StatusStore(rd).get(mid).get(StageId.VOICE_VAL)
     assert st.state == "fail" and "no swap left" in st.detail
+    s = summarise_c(rd)
+    assert s["pass_rate"] == 0.0 and "no swap left" in s["failed"][mid]
     vv = read_model(RunPaths(rd).meeting(mid).voice_validation, VoiceValidation)
     assert [s.kind for s in vv.swaps] == ["clip"]
 

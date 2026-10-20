@@ -291,6 +291,7 @@ class ThresholdsConfig(_M):
     # stage 8 quality gates
     align_coverage_min: float = 0.90  # share of text_norm words with a timing, per utterance
     align_slack_s: float = 0.05  # an aligned word may overrun its segment by this much
+    align_clamp_below_s: float = 1.0  # clips shorter than this have aligned times clamped to the clip ("mm")
 
 
 class BackendsConfig(_M):
@@ -338,11 +339,17 @@ class VoiceConfig(_M):
     nonlexical_tts: dict[str, str] = Field(default_factory=lambda: {"laugh": "haha"})  # tag -> text to clone when the
     # sound library has no clip for it; other tags fall back to a synthetic sound
     # stage 5: checks
-    asr_language: str | None = None  # None: the ASR detects it (code-switched turns)
+    asr_language: str | None = "en"  # None lets the ASR detect it, but it hears one-word turns as Chinese or
+    # Japanese ("Right." -> "对。"); "en" keeps code-switched words romanised, as the scripts write them
     wer_ignore_fillers: bool = True  # (um) (uh) are dropped from both sides before WER; particles stay
     sv_min_s: float = 1.0  # shorter utterances skip the SV checks (embeddings are unreliable)
     mos_min_s: float = 1.0  # shorter utterances skip the MOS floor
-    on_exhausted: Literal["fail", "keep_flagged"] = "fail"  # an utterance still failing after retries.tts_attempts
+    # Within-speaker consistency uses only utterances this long: thresholds.sv_consistency_min is a percentile of
+    # 5-15 s NSC clip pairs, and 2 s clips embed so noisily that speakers with short turns failed it whatever voice
+    # they got (WavLM to reference: 0.68 at 1-2 s, 0.77 at 3-5 s, 0.79 above 5 s)
+    consistency_min_s: float = 3.0
+    consistency_min_utts: int = 3  # fewer such utterances: the speaker check is skipped
+    on_exhausted: Literal["fail", "keep_flagged"] = "keep_flagged"  # an utterance still failing after retries.tts_attempts
 
 
 class AssemblyConfig(_M):
@@ -393,7 +400,9 @@ class SimulationConfig(_M):
     calibration_iters: int = 5
     rt60_calibration_tol: float = 0.05  # relative; absorption is rescaled until the probe is this close
     rt60_tolerance: float = 0.15  # relative; stage 7 fails when the speakers' median measured RT60 is further off
-    calibration_probes: int = 4  # talker positions whose median RT60 is calibrated
+    calibration_probes: int = 20  # talker positions whose median RT60 is calibrated. 20 (the largest meeting) means
+    # every talker, the same set the RT60 check measures: with 4 of 14 talkers, m5-exit m-000008 calibrated to 0.52 s
+    # on the probes but measured 0.60 s over all talkers, against a 0.50 s target
     facing_step_deg: float = 5.0  # facing and presenter drift are quantised, bounding the impulse responses
     drift_grid_m: float = 0.1
     # levels (dBFS of active speech at the source; the room then attenuates by distance, never normalised)

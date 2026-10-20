@@ -86,12 +86,15 @@ class UtteranceCheck(_A):
     seed: int
     passed: bool
     reasons: list[str] = Field(default_factory=list)  # why it failed, one short phrase each
-    skipped: list[str] = Field(default_factory=list)  # checks not applied: "sv" / "mos" (too short), "asr" (no words)
+    skipped: list[str] = Field(default_factory=list)  # checks not applied: "sv" (too short, a backchannel or no
+    # words), "mos" (too short), "asr" (no words)
 
 
 class SpeakerCheck(_A):
     speaker_id: str
-    consistency: dict[str, float]  # SV role -> mean pairwise cosine between this speaker's utterances
+    consistency: dict[str, float]  # SV role -> mean pairwise cosine between this speaker's utterances of at least
+    # voice.consistency_min_s; empty when there are fewer than voice.consistency_min_utts of them (check skipped)
+    consistency_utts: int = 0  # utterances the consistency was computed on
     passed: bool
     ref_mos: float | None = None  # MOS of the speaker's reference clip: the utterance MOS floors are relative to it
 
@@ -99,7 +102,7 @@ class SpeakerCheck(_A):
 class PairCheck(_A):
     a: str
     b: str
-    centroid_cos: dict[str, float]  # SV role -> cosine between the two speakers' utterance centroids
+    cross_cos: dict[str, float]  # SV role -> mean cosine over every utterance pair across the two speakers
     too_close: bool  # either model above its thresholds.sv_pair_max
 
 

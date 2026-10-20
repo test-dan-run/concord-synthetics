@@ -2,15 +2,23 @@
 
 Per utterance:
 - speaker similarity to the speaker's reference clip in both SV models, each against its own threshold
-  (`thresholds.sv`), neither weighted above the other; skipped below `voice.sv_min_s`;
-- ASR round trip: the primary ASR first (WER on `text_norm` words, CER for short utterances); on failure the
-  Singlish ASR, and a pass there tags the utterance `asr_limited`; skipped when the turn has no words to check;
+  (`thresholds.sv`), neither weighted above the other; skipped below `voice.sv_min_s`, and for backchannels and
+  turns with no words (an "mm" or a laugh carries too little of the voice: real hums scored 0.07-0.54 against a
+  0.56 threshold), which also keeps them out of the consistency and separability checks;
+- ASR round trip: the primary ASR (WER on `text_norm` words, CER for short utterances); skipped when the turn has
+  no words to check. A failure is re-synthesised like any other. The Singlish ASR is a fallback only when phase C
+  leases `asr_singlish` (off by default: MERaLiON leaves about 1 GB of VRAM headroom and the bake-off never
+  needed it); a pass there tags the utterance `asr_limited`;
 - MOS floor: at least `thresholds.mos_min`, and at most `thresholds.mos_drop_max` below the MOS of the speaker's
   reference clip (UTMOS rates real NSC voices from about 1.3 to 3.3, so a fixed floor would reject whole voices);
   skipped below `voice.mos_min_s`.
-Per speaker: within-speaker consistency (mean pairwise cosine of its utterances) in both models.
-Per pair of speakers: centroid cosine in both models; a pair is too close if either model is above its
-`thresholds.sv_pair_max`.
+Per speaker: within-speaker consistency (mean pairwise cosine of its utterances of at least
+`voice.consistency_min_s`, the clip lengths its threshold was calibrated on) in both models; skipped with fewer
+than `voice.consistency_min_utts` such utterances.
+Per pair of speakers: mean cosine over all utterance pairs across the two, in both models; a pair is too close if
+either model is above its `thresholds.sv_pair_max`. That threshold was fitted on single clip pairs (`calibrate-sv`),
+so the pair figure stays on that scale: a centroid cosine reads about 1/sqrt(consistency_a * consistency_b) higher,
+which flagged most real meetings.
 
 Decision: failing utterances go back to stage 4 for re-synthesis with a new seed (up to `retries.tts_attempts`
 per reference); a speaker that fails consistency, or the speaker with fewer turns in a too-close pair, gets a
@@ -44,11 +52,17 @@ from ..config.schema import Phase, Role, RunConfig, StageId
 from ..nsc.references import ReferenceIndex
 from ..nsc.settings import nsc_paths
 from ..text.singlish import Lexicon
-from ..validators.voice_checks import asr_words, centroid, consistency, score_asr
+from ..validators.voice_checks import asr_words, consistency, cross_cosine, score_asr
 from .base import StageContext, StageResult
 
 SV_ROLES = (Role.SV_WAVLM, Role.SV_REDIMNET)
 LAUGH_WORDS = frozenset({"ha", "haha", "hahaha", "hehe", "heh"})
+
+
+def asr_roles(cfg: RunConfig) -> tuple[Role, ...]:
+    """The primary ASR, then the Singlish fallback if phase C leases it."""
+    spec = cfg.phases.phases.get(Phase.C)
+    return (Role.ASR_PRIMARY, Role.ASR_SINGLISH) if spec and Role.ASR_SINGLISH in spec.roles else (Role.ASR_PRIMARY,)
 
 
 class Stage5Config(BaseModel):
@@ -64,6 +78,8 @@ class Stage5Config(BaseModel):
     asr_language: str | None
     wer_ignore_fillers: bool
     sv_min_s: float
+    consistency_min_s: float
+    consistency_min_utts: int
     mos_min_s: float
     on_exhausted: str
     max_speaker_swaps: int
@@ -81,7 +97,7 @@ class VoiceValidationStage:
     roles = (Role.ASR_PRIMARY, Role.ASR_SINGLISH, Role.SV_WAVLM, Role.SV_REDIMNET, Role.QUALITY)
     reads = ("meeting", "script", "synthesis", "utterances_dir", "speaker_splits")
     writes = ("voice_validation",)
-    version = "2"
+    version = "5"
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         th, v = cfg.thresholds, cfg.voice
@@ -91,9 +107,11 @@ class VoiceValidationStage:
                             mos_drop_max=th.mos_drop_max,
                             tts_attempts=cfg.retries.tts_attempts, asr_language=v.asr_language,
                             wer_ignore_fillers=v.wer_ignore_fillers, sv_min_s=v.sv_min_s, mos_min_s=v.mos_min_s,
+                            consistency_min_s=v.consistency_min_s, consistency_min_utts=v.consistency_min_utts,
                             on_exhausted=v.on_exhausted, max_speaker_swaps=v.max_speaker_swaps,
                             max_clip_swaps=v.max_clip_swaps, nonlexical_tts=v.nonlexical_tts,
-                            services={r.value: cfg.backends.roles.get(r, "") for r in self.roles},
+                            services={r.value: cfg.backends.roles.get(r, "")
+                                      for r in (*asr_roles(cfg), *SV_ROLES, Role.QUALITY)},
                             lexicon_version=Lexicon.load(cfg.lexicon.path).version,
                             refs_index=ReferenceIndex.load(nsc_paths()).sha256)
 
@@ -107,9 +125,9 @@ class VoiceValidationStage:
         refs = ReferenceIndex.load(nsc_paths())
         turns = {t.turn_id: t for t in script.turns}
         b = ctx.backends
-        asr1, asr2, q = b.get(Role.ASR_PRIMARY), b.get(Role.ASR_SINGLISH), b.get(Role.QUALITY)
+        asrs = [(r, b.get(r), cfg.backends.roles.get(r, "")) for r in asr_roles(cfg)]
+        q = b.get(Role.QUALITY)
         embedders = {r.value: b.get(r) for r in SV_ROLES}
-        svc = {r: cfg.backends.roles.get(r, "") for r in (Role.ASR_PRIMARY, Role.ASR_SINGLISH)}
         laugh_ignore = LAUGH_WORDS | {w for t in vc.nonlexical_tts.values() for w in t.lower().split()}
 
         ref_emb = {sid: {name: e.embed([refs.voice_ref(va.clip_id).audio])[0] for name, e in embedders.items()}
@@ -117,17 +135,21 @@ class VoiceValidationStage:
         ref_mos = {sid: round(float(q.score([refs.voice_ref(va.clip_id).audio])[0]), 3) for sid, va in syn.voices.items()}
         swaps_for = {sid: sum(s.speaker_id == sid for s in syn.swaps) for sid in syn.voices}
         utt_emb: dict[str, dict[str, list[np.ndarray]]] = {sid: {n: [] for n in embedders} for sid in syn.voices}
+        long_emb: dict[str, dict[str, list[np.ndarray]]] = {sid: {n: [] for n in embedders} for sid in syn.voices}
 
         checks: list[UtteranceCheck] = []
         for u in syn.utterances:
             turn = turns[u.turn_id]
             audio = Audio.load(paths.utterance(u.turn_id))
             reasons, skipped = [], []
+            ref_words = asr_words(turn.text_norm, lex, ignore_fillers=vc.wer_ignore_fillers, normalised=True)
             sv: dict[str, float] = {}
-            if audio.duration >= vc.sv_min_s:
+            if audio.duration >= vc.sv_min_s and ref_words and turn.interaction != "backchannel":
                 for name, e in embedders.items():
                     vec = e.embed([audio])[0]
                     utt_emb[u.speaker_id][name].append(vec)
+                    if audio.duration >= vc.consistency_min_s:
+                        long_emb[u.speaker_id][name].append(vec)
                     sv[name] = round(float(vec @ ref_emb[u.speaker_id][name]), 4)
                     if sv[name] < th.sv[name]:
                         reasons.append(f"{name} {sv[name]:.2f} < {th.sv[name]:.2f}")
@@ -136,24 +158,23 @@ class VoiceValidationStage:
 
             asr: list[AsrCheck] = []
             limited, short = False, False
-            ref_words = asr_words(turn.text_norm, lex, ignore_fillers=vc.wer_ignore_fillers, normalised=True)
             if ref_words and u.source != "library":
                 ignore = laugh_ignore if "laugh" in turn.nonspeech else frozenset()
-                for role, client in ((Role.ASR_PRIMARY, asr1), (Role.ASR_SINGLISH, asr2)):
+                for role, client, service in asrs:
                     hyp = client.transcribe(audio, language=vc.asr_language)
                     s = score_asr(ref_words, hyp, lex, short_words=th.short_utterance_words,
                                   ignore_fillers=vc.wer_ignore_fillers, ignore=ignore)
                     short = s.short
                     ok = s.error <= (th.cer_max_short if s.short else th.wer_max)
-                    asr.append(AsrCheck(role=role.value, service=svc[role], hypothesis=hyp, wer=s.wer, cer=s.cer,
+                    asr.append(AsrCheck(role=role.value, service=service, hypothesis=hyp, wer=s.wer, cer=s.cer,
                                         passed=ok))
                     if ok:
                         limited = role == Role.ASR_SINGLISH
                         break
                 if not asr[-1].passed:
                     rate = "CER" if short else "WER"
-                    reasons.append(f"{rate} {asr[0].cer if short else asr[0].wer} / "
-                                   f"{asr[-1].cer if short else asr[-1].wer} in both ASRs")
+                    errors = " / ".join(str(a.cer if short else a.wer) for a in asr)
+                    reasons.append(f"{rate} {errors}" + (" in both ASRs" if len(asr) > 1 else ""))
             else:
                 skipped.append("asr")
                 short = len(ref_words) <= th.short_utterance_words
@@ -171,28 +192,31 @@ class VoiceValidationStage:
                                          asr_limited=limited, short=short, mos=mos, attempts=u.attempt, seed=u.seed,
                                          passed=not reasons, reasons=reasons, skipped=skipped))
 
-        speakers, cents = [], {}
+        speakers, embs_by = [], {}
         for sid in syn.voices:
             embs = {n: np.stack(v) for n, v in utt_emb[sid].items() if v}
             if not embs:
                 continue
-            cons = {n: round(consistency(e), 4) for n, e in embs.items()}
+            long = {n: np.stack(v) for n, v in long_emb[sid].items() if len(v) >= vc.consistency_min_utts}
+            cons = {n: round(consistency(e), 4) for n, e in long.items()}
             ok = all(cons[n] >= th.sv_consistency_min[n] for n in cons)
-            speakers.append(SpeakerCheck(speaker_id=sid, consistency=cons, passed=ok, ref_mos=ref_mos[sid]))
-            cents[sid] = {n: centroid(e) for n, e in embs.items()}
+            n_long = min((len(e) for e in long.values()), default=0)
+            speakers.append(SpeakerCheck(speaker_id=sid, consistency=cons, consistency_utts=n_long, passed=ok,
+                                         ref_mos=ref_mos[sid]))
+            embs_by[sid] = embs
         pairs = []
-        for a, c in combinations(sorted(cents), 2):
-            cos = {n: round(float(cents[a][n] @ cents[c][n]), 4) for n in cents[a] if n in cents[c]}
-            pairs.append(PairCheck(a=a, b=c, centroid_cos=cos, too_close=any(cos[n] > th.sv_pair_max[n] for n in cos)))
+        for a, c in combinations(sorted(embs_by), 2):
+            cos = {n: round(cross_cosine(embs_by[a][n], embs_by[c][n]), 4) for n in embs_by[a] if n in embs_by[c]}
+            pairs.append(PairCheck(a=a, b=c, cross_cos=cos, too_close=any(cos[n] > th.sv_pair_max[n] for n in cos)))
 
         # ---------------------------------------------------------------- decision
         n_turns = {sid: sum(t.speaker_id == sid for t in script.turns) for sid in syn.voices}
         targets: list[tuple[str, str]] = [(s.speaker_id, "inconsistent across utterances") for s in speakers if not s.passed]
         for p in pairs:
             if p.too_close:
-                worst = max(p.centroid_cos, key=lambda n: p.centroid_cos[n] - th.sv_pair_max[n])
+                worst = max(p.cross_cos, key=lambda n: p.cross_cos[n] - th.sv_pair_max[n])
                 victim = min((p.a, p.b), key=lambda s: (n_turns[s], s))
-                targets.append((victim, f"too close to {p.b if victim == p.a else p.a} ({worst} {p.centroid_cos[worst]:.2f})"))
+                targets.append((victim, f"too close to {p.b if victim == p.a else p.a} ({worst} {p.cross_cos[worst]:.2f})"))
         new_swaps, unresolved, seen = [], [], set()
         for sid, reason in targets:
             if sid in seen:

@@ -1,4 +1,4 @@
-"""CLI smoke test with fake backends: init-run, run, status, export-judge-set, sampler-report."""
+"""CLI smoke test with fake backends: init-run, run, status, export-judge-set, sampler-report, voice-report."""
 
 from __future__ import annotations
 
@@ -19,6 +19,12 @@ def test_cli_end_to_end_with_fakes(tmp_path, monkeypatch):
     assert out.exit_code == 0, out.output
     summary = json.loads(out.output[out.output.index("{"):])
     assert summary["scripts_passed"] == 2
+    rep = json.loads((tmp_path / "cli/run_report.json").read_text())
+    assert rep["manifest"]["speakers_disjoint_across_splits"] and rep["phase_seconds"]["CPU"] >= 0
+    assert all(p["meeting"].startswith("m-") for p in rep["problems"])
+    out = r.invoke(app, ["report", "-r", "cli"])
+    assert out.exit_code == 0, out.output
+    assert json.loads((tmp_path / "cli/run_report.json").read_text())["phase_seconds"] == rep["phase_seconds"]
     out = r.invoke(app, ["status", "-r", "cli", "--meetings"])
     assert out.exit_code == 0 and "m-000002" in out.output
     out = r.invoke(app, ["export-judge-set", "-r", "cli", "--n", "2"])
@@ -30,3 +36,35 @@ def test_sampler_report_command(tmp_path):
     assert out.exit_code == 0, out.output
     assert "checks within tolerance" in out.output
     assert all(c["ok"] for c in json.loads((tmp_path / "checks.json").read_text()))
+
+
+def test_voice_report_command(tmp_path, monkeypatch):
+    from voice_helpers import fake_refs
+
+    monkeypatch.setenv("SYNTHETICS_RUNS", str(tmp_path))
+    monkeypatch.setenv("NSC_REFS_DIR", str(fake_refs(tmp_path / "refs")))
+    monkeypatch.setenv("SOUND_LIBRARY_DIR", str(tmp_path / "no-library"))
+    r = CliRunner()
+    out = r.invoke(app, ["init-run", "vr", "--n", "1", "--seed", "4", "--set", "backends.mode=fake",
+                         "--set", "thresholds.sv_pair_max={sv_wavlm: 0.85, sv_redimnet: 0.75}",
+                         "--set", "thresholds.mos_drop_max=5.0",
+                         "--set", "dynamics.duration_min.small={dist: uniform, lo: 4, hi: 6}",
+                         "--set", "dynamics.duration_min.large={dist: uniform, lo: 6, hi: 8}"])
+    assert out.exit_code == 0, out.output
+    assert r.invoke(app, ["run", "-r", "vr", "--until", "5"]).exit_code == 0
+    out = r.invoke(app, ["voice-report", "-r", "vr", "--min-meetings", "1", "--out", str(tmp_path / "c.json")])
+    assert out.exit_code == 0, out.output
+    res = json.loads((tmp_path / "c.json").read_text())
+    assert res["ran"] == 1 and res["pass_rate"] == 1.0 and res["utterances"] > 0
+    assert "1 of 1 meetings through phase C" in out.output
+    assert r.invoke(app, ["voice-report", "-r", "vr"]).exit_code == 1  # fewer than 10
+
+
+def test_split_overlap_finds_a_speaker_in_two_splits(tmp_path):
+    from synthetics.orchestrator.run_report import split_overlap
+
+    m = tmp_path / "manifest.jsonl"
+    m.write_text("\n".join(json.dumps({"speakers": [{"nsc_speaker": sp, "split": sl}]})
+                           for sp, sl in [("A", "train"), ("B", "dev"), ("A", "test"), ("B", "dev")]) + "\n")
+    assert split_overlap(m) == {"A": ["test", "train"]}
+    assert split_overlap(tmp_path / "missing.jsonl") == {}

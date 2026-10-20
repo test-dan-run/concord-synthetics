@@ -90,8 +90,14 @@ def run_phase_c(sched, ids: list[str], report) -> None:
 
 
 def summarise_c(run_dir: Path) -> dict:
-    """Phase C figures for the M5 exit check: pass, re-synthesis and ASR-limited rates."""
+    """Phase C figures for the M5 exit check, over the meetings stage 5 decided (pass or fail).
+
+    Stage 4 counts a re-render after a reference swap as an attempt too, so an utterance's re-syntheses for failed
+    checks are its attempts, less one, less the swaps of its speaker.
+    """
     import json
+
+    import numpy as np
 
     from ..artifacts.paths import RunPaths
 
@@ -99,19 +105,50 @@ def summarise_c(run_dir: Path) -> dict:
     rp = RunPaths(run_dir)
     ids = rp.meeting_ids()
     states: dict[str, int] = {}
-    utts = resynth = limited = swaps = 0
+    failed: dict[str, str] = {}
+    utts = first = resynth = limited = kept = 0
+    swaps = {"clip": 0, "speaker": 0}
+    swapped = {"clip": 0, "speaker": 0}  # meetings with at least one swap of that kind
+    sv: dict[str, list[float]] = {}
+    mos: list[float] = []
     for mid in ids:
-        st = store.get(mid).get(StageId.VOICE_VAL).state
-        states[st] = states.get(st, 0) + 1
+        st = store.get(mid).get(StageId.VOICE_VAL)
+        states[st.state] = states.get(st.state, 0) + 1
+        if st.state == "fail":
+            failed[mid] = st.detail or ""
         vv = rp.meeting(mid).voice_validation
-        if st == "pass" and vv.is_file():
-            data = json.loads(vv.read_text())
-            utts += len(data["utterances"])
-            resynth += sum(u["attempts"] > 1 for u in data["utterances"])
-            limited += sum(u["asr_limited"] for u in data["utterances"])
-            swaps += len(data.get("swaps") or [])
-    ran = sum(v for k, v in states.items() if k in ("pass", "fail"))
-    return {"meetings": len(ids), "stage5": states,
-            "pass_rate": round(states.get("pass", 0) / ran, 4) if ran else None,
-            "utterances": utts, "resynthesis_rate": round(resynth / utts, 4) if utts else None,
-            "asr_limited_rate": round(limited / utts, 4) if utts else None, "reference_swaps": swaps}
+        if st.state not in ("pass", "fail") or not vv.is_file():
+            continue
+        data = json.loads(vv.read_text())
+        per_speaker = {}
+        for sw in data.get("swaps") or []:
+            swaps[sw["kind"]] += 1
+            per_speaker[sw["speaker_id"]] = per_speaker.get(sw["speaker_id"], 0) + 1
+        for kind in swapped:
+            swapped[kind] += any(sw["kind"] == kind for sw in data.get("swaps") or [])
+        for u in data["utterances"]:
+            utts += 1
+            redone = u["attempts"] - 1 - per_speaker.get(u["speaker_id"], 0) > 0
+            first += u["passed"] and not redone  # a re-render after a swap is not a second take
+            resynth += redone
+            limited += u["asr_limited"]
+            for name, v in u["sv"].items():
+                sv.setdefault(name, []).append(v)
+            if u.get("mos") is not None:
+                mos.append(u["mos"])
+        kept += len(data.get("kept_failed") or [])
+    ran = states.get("pass", 0) + states.get("fail", 0)
+
+    def rate(n: int, d: int) -> float | None:
+        return round(n / d, 4) if d else None
+
+    return {"meetings": len(ids), "ran": ran, "stage5": states,
+            "pass_rate": rate(states.get("pass", 0), ran),
+            "utterances": utts, "first_pass_rate": rate(first, utts), "resynthesis_rate": rate(resynth, utts),
+            "asr_limited_rate": rate(limited, utts), "kept_failed": kept,
+            "clip_swaps": swaps["clip"], "speaker_swaps": swaps["speaker"],
+            "clip_swap_meeting_rate": rate(swapped["clip"], ran),
+            "speaker_swap_meeting_rate": rate(swapped["speaker"], ran),
+            "sv_mean": {n: round(float(np.mean(v)), 4) for n, v in sorted(sv.items())},
+            "mos_mean": round(float(np.mean(mos)), 3) if mos else None,
+            "failed": failed}

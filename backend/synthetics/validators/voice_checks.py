@@ -2,7 +2,7 @@
 
 WER compares `text_norm` words (particles count; fillers are dropped from both sides when asked, since ASR models
 routinely omit "um" and "uh"). Short utterances use CER over the same words, as the design doc asks for
-backchannels.
+backchannels. ASR spellings of the same word ("yeah" for the scripts' "ya") are mapped first, on both sides.
 """
 
 from __future__ import annotations
@@ -14,11 +14,15 @@ import numpy as np
 from ..text.numbers import spell_numbers
 from ..text.singlish import Lexicon, text_norm
 
+# Scoring only: these are the same word to a listener, and the lexicon (which also shapes scripts and TTS input)
+# stays as it is.
+ASR_SPELLINGS = {"yeah": "ya", "yah": "ya", "okay": "ok"}
+
 
 def asr_words(text: str, lex: Lexicon, *, ignore_fillers: bool, normalised: bool = False) -> list[str]:
     """Words for scoring: `text_norm` of the text (unless already normalised; digits spelled out first, since
-    ASR writes "20" where scripts say "twenty"), fillers optionally dropped."""
-    words = (text if normalised else text_norm(spell_numbers(text), lex)).split()
+    ASR writes "20" where scripts say "twenty"), ASR spellings mapped, fillers optionally dropped."""
+    words = [ASR_SPELLINGS.get(w, w) for w in (text if normalised else text_norm(spell_numbers(text), lex)).split()]
     if ignore_fillers:
         words = [w for w in words if lex.filler(w) is None]
     return words
@@ -64,6 +68,12 @@ def consistency(embs: np.ndarray) -> float:
         return 1.0
     sims = embs @ embs.T
     return float((sims.sum() - np.trace(sims)) / (n * (n - 1)))
+
+
+def cross_cosine(a: np.ndarray, b: np.ndarray) -> float:
+    """Mean cosine over every pair of rows, one from each set (L2-normalised rows): the single-pair scale the SV
+    thresholds were fitted on."""
+    return float((a @ b.T).mean())
 
 
 def centroid(embs: np.ndarray) -> np.ndarray:

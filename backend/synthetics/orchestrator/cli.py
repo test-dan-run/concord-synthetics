@@ -104,21 +104,25 @@ def run(run: RunOpt,
         until: Annotated[int, typer.Option(help="last stage to run (1-8)")] = 8,
         only: Annotated[str | None, typer.Option(help="one phase only: CPU, A, B, B2, C or D")] = None,
         keep_services: Annotated[bool, typer.Option(help="leave leased services running afterwards")] = False):
-    """Run the pipeline phase by phase."""
+    """Run the pipeline phase by phase, then rebuild run_report.json."""
+    from .run_report import write_run_report
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    sched.run(until=StageId(until), only=Phase(only) if only else None)
+    rep = sched.run(until=StageId(until), only=Phase(only) if only else None)
+    write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId(until)), indent=2))
 
 
 @app.command()
 def resume(run: RunOpt, keep_services: Annotated[bool, typer.Option()] = False):
     """Continue a run where it stopped (same as `run`; finished stages are cache hits)."""
+    from .run_report import write_run_report
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    sched.run(until=StageId.LABELS)
+    rep = sched.run(until=StageId.LABELS)
+    write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId.LABELS), indent=2))
 
 
@@ -149,10 +153,13 @@ def post(run: RunOpt,
     """Stages 6-8 only, on meetings that passed phase C, then the run manifest."""
     from ..artifacts.paths import RunPaths
     from .phase_post import run_post
+    from .run_report import write_run_report
     from .scheduler import RunReport, summarise
 
     rd, sched = _scheduler(run, keep_services)
-    run_post(sched, RunPaths(rd).meeting_ids(), RunReport(), until=StageId(until), only=Phase(only) if only else None)
+    rep = RunReport()
+    run_post(sched, RunPaths(rd).meeting_ids(), rep, until=StageId(until), only=Phase(only) if only else None)
+    write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId(until)), indent=2))
 
 
@@ -164,6 +171,16 @@ def manifest(run: RunOpt):
     path = write_run_manifest(_run_dir(run))
     n = sum(1 for line in path.read_text().splitlines() if line.strip())
     typer.echo(f"wrote {path}: {n} meetings")
+
+
+@app.command()
+def report(run: RunOpt):
+    """Rebuild run_report.json: drops and failures, time per phase, phase C figures, split disjointness."""
+    from .run_report import write_run_report
+
+    rep = write_run_report(_run_dir(run))
+    typer.echo(json.dumps({k: rep[k] for k in ("problems", "phase_seconds", "manifest")}, indent=2))
+    raise typer.Exit(0 if rep["manifest"]["speakers_disjoint_across_splits"] else 1)
 
 
 @app.command()
@@ -214,6 +231,27 @@ def sampler_report(n: Annotated[int, typer.Option()] = 1000, seed: Annotated[int
     raise typer.Exit(0 if all(c.ok for c in checks) else 1)
 
 
+@app.command("coverage-seed")
+def coverage_seed(n: Annotated[int, typer.Option(help="meetings in the run")] = 20,
+                  start: Annotated[int, typer.Option(help="first seed to try")] = 1,
+                  tries: Annotated[int, typer.Option()] = 500,
+                  config: Annotated[list[Path], typer.Option("--config", "-c", help="YAML overlays, in order")] = []):  # noqa: B006
+    """M9: the first run seed whose N meetings cover every split, room class, a 20-speaker test meeting,
+    presenters, wall seats (overflow and by choice) and remote participants."""
+    from ..config.loader import load_run_config
+    from ..validators.coverage import find_seed
+    from .run import resolve
+
+    cfg = resolve(load_run_config(*config, overrides={"run_id": "coverage-seed", "seed": start, "n_meetings": n}))
+    seed, cov = find_seed(cfg, n, start=start, tries=tries)
+    for name, ok in cov.items():
+        typer.echo(f"{'ok  ' if ok else 'MISS'} {name}")
+    if seed is None:
+        typer.echo(f"no seed in {start}..{start + tries - 1} covers everything")
+        raise typer.Exit(1)
+    typer.echo(f"seed {seed}")
+
+
 @app.command("export-judge-set")
 def export_judge_set(run: RunOpt, n: Annotated[int, typer.Option(help="scripts to export (50-100)")] = 60,
                      name: Annotated[str, typer.Option()] = "judge_set_1",
@@ -258,6 +296,22 @@ def bakeoff(out: Annotated[Path, typer.Option(help="report directory")] = Path("
                       seed=seed, lease=lease, keep_services=keep_services, log=typer.echo)
     typer.echo(json.dumps(rep["by_mode"], indent=2))
     typer.echo(f"report: {app_path(out) / 'report.md'}")
+
+
+@app.command("voice-report")
+def voice_report(run: RunOpt,
+                 min_meetings: Annotated[int, typer.Option(help="meetings stage 5 must have decided (M5 exit: 10)")] = 10,
+                 out: Annotated[Path | None, typer.Option(help="also write the figures as JSON")] = None):
+    """M5 exit check: pass, first-pass, re-synthesis, ASR-limited and swap rates over phase C."""
+    from .phase_c import summarise_c
+
+    res = summarise_c(_run_dir(run))
+    text = json.dumps(res, indent=2)
+    typer.echo(text)
+    if out:
+        out.write_text(text + "\n")
+    typer.echo(f"{res['ran']} of {min_meetings} meetings through phase C")
+    raise typer.Exit(0 if res["ran"] >= min_meetings else 1)
 
 
 @app.command("calibrate-sv")
