@@ -442,6 +442,11 @@ class LabelsConfig(_M):
 
 class RunConfig(_M):
     schema_version: Literal["1"] = "1"
+    # How a run samples and caches. 1: runs made before Oct 21, 2026, which a frozen config without the field is.
+    # 2 (the default for new runs, set in stages.yaml): stage 1 draws the acoustic values (`ACOUSTIC_FIELDS` of
+    # meeting.json) from their own random stream, and stages 2-6 hash meeting.json without them, so a change to a
+    # sampled acoustic distribution re-runs only stages 1, 7 and 8.
+    revision: int = 1
     run_id: str
     seed: int
     n_meetings: int

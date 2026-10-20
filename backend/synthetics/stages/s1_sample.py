@@ -315,7 +315,10 @@ def _persona(cfg: RunConfig, nsc: NscSpeaker, seniority: str, tercile: int, used
 
 
 def sample_meeting(cfg: RunConfig, splits: SpeakerSplits, meeting_id: str, seed: int,
-                   rng: np.random.Generator) -> MeetingSpec:
+                   rng: np.random.Generator, acoustic_rng: np.random.Generator | None = None) -> MeetingSpec:
+    """`acoustic_rng` draws the acoustic values (`ACOUSTIC_FIELDS`); without it they come from `rng`, in the order of
+    revision 1 runs."""
+    arng = acoustic_rng or rng
     plan = draw_plan(cfg, rng)
     resamples = 0
     while True:
@@ -430,48 +433,48 @@ def sample_meeting(cfg: RunConfig, splits: SpeakerSplits, meeting_id: str, seed:
                    for i, c in enumerate(lay.wall_chairs)]
 
     # room surfaces and acoustics
-    walls = {w_: ac.wall_material.sample(rng) for w_ in ("N", "E", "S", "W")}
+    walls = {w_: ac.wall_material.sample(arng) for w_ in ("N", "E", "S", "W")}
     presentation_on = plan.presentation
     screen = (Screen(wall=seating.front_wall, center=r(lay.screen_center), width=r(lay.screen_width),
                      bottom=seating.screen.bottom, top=min(seating.screen.top, lay.room_h - 0.2))
               if presentation_on else None)
     room = Room(length=r(lay.room_l), width=r(lay.room_w), height=r(lay.room_h), front_wall=seating.front_wall,
-                walls=walls, floor="carpet" if ac.carpet.sample(rng) else "vinyl",
-                ceiling="acoustic_tile" if ac.acoustic_tile.sample(rng) else "plasterboard",
-                rt60_target=r(ac.rt60[room_class].sample(rng)), screen=screen)
+                walls=walls, floor="carpet" if ac.carpet.sample(arng) else "vinyl",
+                ceiling="acoustic_tile" if ac.acoustic_tile.sample(arng) else "plasterboard",
+                rt60_target=r(ac.rt60[room_class].sample(arng)), screen=screen)
 
     duration = dyn.duration_min[room_class].sample(rng)
     n_turns = max(20, int(round(duration * dyn.turns_per_min.sample(rng))))
     noise = []
-    if ac.hvac.sample(rng):
+    if ac.hvac.sample(arng):
         noise.append(NoiseSource(kind="hvac", position=r3((lay.room_l / 2, lay.room_w / 2, lay.room_h - 0.05))))
-    if presentation_on and ac.projector_fan_if_presentation.sample(rng):
+    if presentation_on and ac.projector_fan_if_presentation.sample(arng):
         noise.append(NoiseSource(kind="projector_fan",
                                  position=r3((min(2.0, lay.room_l / 2), lay.room_w / 2, lay.room_h - 0.3))))
-    if ac.keyboard[room_class].sample(rng):
+    if ac.keyboard[room_class].sample(arng):
         if room_class == "small":
             kp = (mic.position[0], mic.position[1], th + 0.02)
         else:
-            tp = by_sid[table_people[int(rng.integers(len(table_people)))].sid]
+            tp = by_sid[table_people[int(arng.integers(len(table_people)))].sid]
             assert tp.seat is not None
             edge = lay.slots[tp.seat.index].xy
             kp = (edge[0], edge[1], th + 0.02)
         noise.append(NoiseSource(kind="keyboard", position=r3(kp)))
-    rate = ac.events_per_10min[room_class].sample(rng)
-    n_events = int(rng.poisson(rate * duration / 10))
+    rate = ac.events_per_10min[room_class].sample(arng)
+    n_events = int(arng.poisson(rate * duration / 10))
     events: dict[str, int] = {str(k): 0 for k in ac.event_types.weights}
     for _ in range(n_events):
-        events[str(ac.event_types.sample(rng))] += 1
-    acoustics = Acoustics(rt60=room.rt60_target, snr_db=r(ac.snr_db[room_class].sample(rng)), noise_sources=noise,
+        events[str(ac.event_types.sample(arng))] += 1
+    acoustics = Acoustics(rt60=room.rt60_target, snr_db=r(ac.snr_db[room_class].sample(arng)), noise_sources=noise,
                           events=events, events_per_10min=r(rate), orientation_max_deg=ac.orientation_max_deg,
                           orientation_resample_p=ac.orientation_resample_p)
 
     dc = ac.device_chain
-    chain = DeviceChain(agc=dc.agc.sample(rng),
-                        band_limit_hz=r(dc.band_limit_hz.sample(rng)) if dc.band_limit.sample(rng) else None,
-                        codec_kbps=int(dc.codec_kbps.sample(rng)) if dc.codec.sample(rng) else None,
-                        clipping_level=r(dc.clipping_level.sample(rng)) if dc.clipping.sample(rng) else None,
-                        aec_artifacts=bool(plan.hybrid and dc.aec_artifacts_if_hybrid.sample(rng)))
+    chain = DeviceChain(agc=dc.agc.sample(arng),
+                        band_limit_hz=r(dc.band_limit_hz.sample(arng)) if dc.band_limit.sample(arng) else None,
+                        codec_kbps=int(dc.codec_kbps.sample(arng)) if dc.codec.sample(arng) else None,
+                        clipping_level=r(dc.clipping_level.sample(arng)) if dc.clipping.sample(arng) else None,
+                        aec_artifacts=bool(plan.hybrid and dc.aec_artifacts_if_hybrid.sample(arng)))
 
     remote_sids = sorted(p.sid for p in people if p.kind == "remote")
     speakerphone = None
@@ -516,6 +519,19 @@ def _slot_labels(slots: list[geo.EdgePoint]) -> list[str]:
 # ---------------------------------------------------------------- the stage
 
 
+def run_meeting(cfg: RunConfig, splits: SpeakerSplits, meeting_id: str) -> MeetingSpec:
+    """Stage 1 for one meeting, exactly as a run draws it. The meeting is a function of the run seed and the meeting
+    id only, so attempt numbers never change it. From revision 2 the acoustic values come from a stream of their own,
+    so changing an acoustic distribution leaves every other draw where it was."""
+    from .runner import meeting_seed
+
+    seed = meeting_seed(cfg.seed, meeting_id)
+    rng = np.random.default_rng(np.random.SeedSequence([cfg.seed, seed, int(StageId.SAMPLE)]))
+    arng = (np.random.default_rng(np.random.SeedSequence([cfg.seed, seed, int(StageId.SAMPLE), 1]))
+            if cfg.revision >= 2 else None)
+    return sample_meeting(cfg, splits, meeting_id, seed, rng, arng)
+
+
 class Stage1Config(BaseModel):
     room_classes: RoomClassesConfig
     seating: SeatingConfig
@@ -541,13 +557,8 @@ class SampleStage:
                             split_mix=cfg.speaker_pool.split_mix)
 
     def run(self, ctx: StageContext) -> StageResult:
-        from .runner import meeting_seed
-
         splits = read_model(ctx.paths.artifact("speaker_splits"), SpeakerSplits)
-        seed = meeting_seed(ctx.cfg.seed, ctx.paths.meeting_id)
-        # the meeting is a function of (run seed, meeting seed) only, so attempt numbers never change it
-        rng = np.random.default_rng(np.random.SeedSequence([ctx.cfg.seed, seed, int(self.id)]))
-        spec = sample_meeting(ctx.cfg, splits, ctx.paths.meeting_id, seed, rng)
+        spec = run_meeting(ctx.cfg, splits, ctx.paths.meeting_id)
         write_model(ctx.paths.meeting, spec)
         parts = [f"{spec.n_speakers} speakers"]
         for kind in ("presenter", "wall", "remote"):

@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import numpy as np
-
 from ..artifacts.meeting import MeetingSpec
 from ..config.schema import RunConfig
 
@@ -19,15 +17,12 @@ from ..config.schema import RunConfig
 def sample_meetings(cfg: RunConfig, n: int, seed: int) -> list[MeetingSpec]:
     """Stage 1 for meetings 1..n of a run with this seed, in memory."""
     from ..nsc.pool import speaker_splits
-    from ..stages.runner import meeting_id_for, meeting_seed
-    from ..stages.s1_sample import sample_meeting
+    from ..stages.runner import meeting_id_for
+    from ..stages.s1_sample import run_meeting
 
     sp = speaker_splits(cfg.speaker_pool.path, cfg.speaker_pool.version)
-    out = []
-    for i in range(1, n + 1):
-        mid = meeting_id_for(i)
-        s = meeting_seed(seed, mid)
-        out.append(sample_meeting(cfg, sp, mid, s, np.random.default_rng(np.random.SeedSequence([seed, s, 1]))))
+    c = cfg.model_copy(update={"seed": seed})
+    out = [run_meeting(c, sp, meeting_id_for(i)) for i in range(1, n + 1)]
     return out
 
 

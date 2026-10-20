@@ -216,16 +216,18 @@ Stage 7 also fails a meeting when the measured RT60 is off target, as described 
   speaker changes (for example two people, one of them presenting) can run out of transitions to overlap; it then
   stays under its target, still inside the configured range, and stage 6 says "out of reach" on its status line.
 
-## Open issue: changing sampled acoustics re-runs every stage
+## Changing sampled acoustics (run revision 2)
 
-Changing a render setting (`simulation` in `config.yaml`) re-runs only stages 7 and 8, as intended. Changing a sampled
-acoustic distribution (`acoustics` in `config.yaml`, for example the SNR range) currently re-runs every stage. Stage 1
-samples those values into `meeting.json`, and the runner's cache key hashes the whole of `meeting.json` for stages 2
-to 6. Two upstream changes would fix it:
+Changing a render setting (`simulation` in `config.yaml`) re-runs only stages 7 and 8. Changing a sampled acoustic
+distribution (`acoustics` in `config.yaml`, for example the SNR range) re-runs stages 1, 7 and 8, and leaves the
+scripts and the speech alone. This holds for runs with `revision: 2` in `config.yaml`, which is the default for new
+runs since Oct 21, 2026:
 
-1. In stage 1, draw the acoustic values (`room.walls`, `room.floor`, `room.ceiling`, `room.rt60_target`, `acoustics`,
-   `device_chain`) from their own random stream, so a change to them never moves the other draws.
-2. In the runner, hash `meeting.json` without those fields for stages 2 to 6.
+1. Stage 1 draws the acoustic values (`room.walls`, `room.floor`, `room.ceiling`, `room.rt60_target`, `acoustics`
+   and `device_chain`; `ACOUSTIC_FIELDS` in `artifacts/meeting.py`) from a random stream of their own, so a change
+   to them never moves the other draws.
+2. Stages 2 to 6 hash `meeting.json` without those fields in their cache keys.
 
-`tests/test_post.py::test_changing_sampled_acoustics_reruns_only_stages_7_and_8` is a strict expected failure until
-both changes are made.
+Runs made before then (`m3-10`, `m5-exit`, `m9-e2e`) have no `revision` in their frozen config, so they are
+revision 1: their meetings keep the draws they were made with and their cache keys do not change, and a change to
+their acoustics still re-runs every stage. The same seed draws different meetings under the two revisions.

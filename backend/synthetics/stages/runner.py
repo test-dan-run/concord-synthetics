@@ -1,7 +1,11 @@
 """Runs one stage on one meeting: toggle, cache key, seeded RNG, status record, retry hand-off.
 
-Cache key = sha256(stage id, version, config slice, input artifact hashes, pending feedback). A stage is
-skipped when status.json already holds a `pass` with the same key and its outputs exist.
+Cache key = sha256(stage id, version, config slice, input artifact hashes, pending feedback, and the run's revision
+from 2 on). A stage is skipped when status.json already holds a `pass` with the same key and its outputs exist.
+
+From revision 2, stages 2-6 hash meeting.json without its acoustic values (`ACOUSTIC_FIELDS`), which only stages 7
+and 8 read, so resampling the acoustics re-runs stages 1, 7 and 8 alone. Revision 1 runs keep the keys they were
+made with: the revision is left out of their keys and they hash meeting.json whole.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from ..artifacts.io import tree_sha256
+from ..artifacts.meeting import ACOUSTIC_FIELDS
 from ..artifacts.paths import MeetingPaths
 from ..backends.registry import Backends
 from ..config.loader import canonical_json
@@ -39,17 +44,37 @@ def stage_seed_sequence(run_seed: int, m_seed: int, stage: int, attempt: int) ->
     return np.random.SeedSequence([run_seed, m_seed, int(stage), attempt])
 
 
-def input_hashes(stage: Stage, paths: MeetingPaths) -> dict[str, str]:
+ACOUSTICS_BLIND = {StageId.SCRIPT, StageId.SCRIPT_VAL, StageId.VOICE, StageId.VOICE_VAL, StageId.ASSEMBLE}
+
+
+def meeting_sha_without_acoustics(path: Path) -> str:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for keys in ACOUSTIC_FIELDS:
+        node = data
+        for k in keys[:-1]:
+            node = node.get(k, {})
+        node.pop(keys[-1], None)
+    return hashlib.sha256(canonical_json(data).encode()).hexdigest()
+
+
+def input_hashes(stage: Stage, paths: MeetingPaths, revision: int = 1) -> dict[str, str]:
     out = {}
     for key in stage.reads:
         p = paths.artifact(key)
-        out[key] = tree_sha256(p) if p.exists() else "missing"
+        if not p.exists():
+            out[key] = "missing"
+        elif key == "meeting" and revision >= 2 and stage.id in ACOUSTICS_BLIND:
+            out[key] = meeting_sha_without_acoustics(p)
+        else:
+            out[key] = tree_sha256(p)
     return out
 
 
 def cache_key(stage: Stage, cfg: RunConfig, paths: MeetingPaths, feedback: str | None) -> str:
     body = {"stage": int(stage.id), "version": stage.version, "config": json.loads(canonical_json(stage.config_slice(cfg))),
-            "inputs": input_hashes(stage, paths), "feedback": feedback}
+            "inputs": input_hashes(stage, paths, cfg.revision), "feedback": feedback}
+    if cfg.revision >= 2:
+        body["revision"] = cfg.revision
     return hashlib.sha256(canonical_json(body).encode()).hexdigest()[:16]
 
 

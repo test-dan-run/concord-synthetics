@@ -1,4 +1,5 @@
 # Stage toggles (ablations), stage 2/3 generation settings, retries and thresholds.
+revision: 2  # sampling and cache scheme of new runs (RunConfig.revision); frozen configs keep theirs
 stages:
   1: {enabled: true}
   2: {enabled: true}

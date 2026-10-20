@@ -241,17 +241,46 @@ def test_changing_render_settings_reruns_only_stages_7_and_8(tmp_path):
     assert StatusStore(rd).get(ids[0]).get(StageId.LABELS).state == "pass"
 
 
-@pytest.mark.xfail(strict=True, reason="stage 1 samples acoustics into meeting.json, which stages 2-6 hash whole; "
-                                        "needs the upstream change described in docs/OUTPUT_CONTRACT.md")
-def test_changing_sampled_acoustics_reruns_only_stages_7_and_8(tmp_path):
+def _resample_snr(cfg):
     from synthetics.config.distributions import Uniform
 
-    rd, cfg = fake_run(tmp_path, n=1, seed=3, **HERMETIC)
-    PhaseScheduler(rd, cfg).run()
     snr = cfg.acoustics.snr_db.model_copy(update={"small": Uniform(lo=0, hi=5), "large": Uniform(lo=0, hi=5)})
-    cfg2 = cfg.model_copy(update={"acoustics": cfg.acoustics.model_copy(update={"snr_db": snr})})
-    report = PhaseScheduler(rd, cfg2).run()
-    assert not any(o.stage == StageId.SCRIPT for o in report.outcomes), "stage 2 ran again"
+    return cfg.model_copy(update={"acoustics": cfg.acoustics.model_copy(update={"snr_db": snr})})
+
+
+def test_changing_sampled_acoustics_reruns_only_stages_1_7_and_8(tmp_path):
+    from synthetics.artifacts.meeting import ACOUSTIC_FIELDS
+
+    rd, cfg = fake_run(tmp_path, n=1, seed=3, **HERMETIC)
+    assert cfg.revision == 2  # the default for new runs
+    run_to_phase_c(rd, cfg)
+    ids = RunPaths(rd).meeting_ids()
+    run_post(PhaseScheduler(rd, cfg), ids, RunReport())
+    before = read_model(MeetingPaths(rd, ids[0]).meeting, MeetingSpec).model_dump()
+
+    cfg2 = _resample_snr(cfg)
+    upstream = PhaseScheduler(rd, cfg2).run()
+    assert [(int(o.stage), o.state) for o in upstream.outcomes] == [(1, "pass")]  # 2 and 3 are fresh
+    after = read_model(MeetingPaths(rd, ids[0]).meeting, MeetingSpec).model_dump()
+    assert after["acoustics"]["snr_db"] <= 5 < before["acoustics"]["snr_db"]
+    for keys in ACOUSTIC_FIELDS:  # only the acoustic values moved
+        for d in (before, after):
+            node = d
+            for k in keys[:-1]:
+                node = node[k]
+            node.pop(keys[-1])
+    assert after == before
+    report = RunReport()
+    run_post(PhaseScheduler(rd, cfg2), ids, report)
+    assert {int(o.stage): o.state for o in report.outcomes} == {6: "cached", 7: "pass", 8: "pass"}
+
+
+def test_revision_1_runs_keep_hashing_the_whole_meeting(tmp_path):
+    # frozen configs from before revision 2 have no `revision`: their cache keys and draws must not change
+    rd, cfg = fake_run(tmp_path, n=1, seed=3, revision=1, **HERMETIC)
+    PhaseScheduler(rd, cfg).run()
+    report = PhaseScheduler(rd, _resample_snr(cfg)).run()
+    assert any(o.stage == StageId.SCRIPT and o.state == "pass" for o in report.outcomes), "stage 2 was cached"
 
 
 def test_stage7_is_reproducible(tmp_path):

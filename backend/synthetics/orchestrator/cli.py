@@ -208,22 +208,17 @@ def sampler_report(n: Annotated[int, typer.Option()] = 1000, seed: Annotated[int
                    config: Annotated[list[Path], typer.Option("--config", "-c")] = [],  # noqa: B006
                    out: Annotated[Path | None, typer.Option(help="also write the checks as JSON")] = None):
     """M1 exit check: sample N meetings (stage 1 only, in memory) and compare every rate with its target."""
-    import numpy as np
 
     from ..config.loader import load_run_config
     from ..nsc.pool import speaker_splits
-    from ..stages.runner import meeting_id_for, meeting_seed
-    from ..stages.s1_sample import sample_meeting
+    from ..stages.runner import meeting_id_for
+    from ..stages.s1_sample import run_meeting
     from ..validators.sampler_report import as_dicts, render, sampler_checks
     from .run import resolve
 
     cfg = resolve(load_run_config(*config, overrides={"run_id": "sampler-report", "seed": seed, "n_meetings": n}))
     sp = speaker_splits(cfg.speaker_pool.path, cfg.speaker_pool.version)
-    ms = []
-    for i in range(1, n + 1):
-        mid = meeting_id_for(i)
-        s = meeting_seed(seed, mid)
-        ms.append(sample_meeting(cfg, sp, mid, s, np.random.default_rng(np.random.SeedSequence([seed, s, 1]))))
+    ms = [run_meeting(cfg, sp, meeting_id_for(i)) for i in range(1, n + 1)]
     checks = sampler_checks(cfg, ms)
     typer.echo(render(checks))
     if out:
