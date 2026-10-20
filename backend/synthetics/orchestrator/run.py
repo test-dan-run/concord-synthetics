@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..artifacts.io import write_model
 from ..artifacts.paths import RunPaths
-from ..config.loader import config_hash, dump_run_config, load_run_config, read_run_config
+from ..config.loader import config_hash, dump_run_config, load_run_config, read_run_config, read_yaml
 from ..config.schema import RunConfig
 from ..nsc.pool import speaker_splits
 from ..stages.runner import meeting_id_for
@@ -59,6 +59,7 @@ def init_run(run_id: str, *, n_meetings: int, seed: int, configs: list[Path] | N
 
 
 def load_run(run_dir: Path) -> tuple[RunConfig, str]:
-    """(resolved config, config hash of the frozen file)."""
-    cfg = read_run_config(RunPaths(run_dir).config)
-    return resolve(cfg), config_hash(cfg)
+    """(resolved config, config hash of the frozen file). The hash is of the file's content, so it stays the same
+    when the schema gains a field with a default."""
+    path = RunPaths(run_dir).config
+    return resolve(read_run_config(path)), config_hash(read_yaml(path))

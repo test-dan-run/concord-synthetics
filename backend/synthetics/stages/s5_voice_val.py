@@ -130,9 +130,11 @@ class VoiceValidationStage:
         embedders = {r.value: b.get(r) for r in SV_ROLES}
         laugh_ignore = LAUGH_WORDS | {w for t in vc.nonlexical_tts.values() for w in t.lower().split()}
 
-        ref_emb = {sid: {name: e.embed([refs.voice_ref(va.clip_id).audio])[0] for name, e in embedders.items()}
+        fake = cfg.backends.mode == "fake"
+        ref_emb = {sid: {name: e.embed([refs.voice_ref(va.clip_id, fake=fake).audio])[0] for name, e in embedders.items()}
                    for sid, va in syn.voices.items()}
-        ref_mos = {sid: round(float(q.score([refs.voice_ref(va.clip_id).audio])[0]), 3) for sid, va in syn.voices.items()}
+        ref_mos = {sid: round(float(q.score([refs.voice_ref(va.clip_id, fake=fake).audio])[0]), 3)
+                   for sid, va in syn.voices.items()}
         swaps_for = {sid: sum(s.speaker_id == sid for s in syn.swaps) for sid in syn.voices}
         utt_emb: dict[str, dict[str, list[np.ndarray]]] = {sid: {n: [] for n in embedders} for sid in syn.voices}
         long_emb: dict[str, dict[str, list[np.ndarray]]] = {sid: {n: [] for n in embedders} for sid in syn.voices}

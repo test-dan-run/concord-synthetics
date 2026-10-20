@@ -1,0 +1,1278 @@
+{
+  "schema_version": "1",
+  "meeting_id": "m-000003",
+  "seed": 2967464816,
+  "split": "test",
+  "room_class": "large",
+  "n_speakers": 20,
+  "fit_resamples": 0,
+  "room": {
+    "length": 6.6489,
+    "width": 6.8819,
+    "height": 2.9633,
+    "front_wall": "W",
+    "walls": {
+      "N": "glass",
+      "E": "plasterboard",
+      "S": "glass",
+      "W": "plasterboard"
+    },
+    "floor": "carpet",
+    "ceiling": "plasterboard",
+    "rt60_target": 0.8542,
+    "screen": null
+  },
+  "table": {
+    "shape": "rect",
+    "center": [
+      3.2407,
+      1.8973
+    ],
+    "length": 4.4655,
+    "width": 1.1621,
+    "height": 0.7585,
+    "seat_pitch": 0.6462,
+    "capacity": 14,
+    "slots": [
+      {
+        "index": 0,
+        "label": "N1",
+        "side": "N",
+        "edge_s": 0.6171,
+        "edge_xy": [
+          1.6251,
+          2.4784
+        ],
+        "seat_xy": [
+          1.6251,
+          2.7263
+        ],
+        "occupied_by": "S02"
+      },
+      {
+        "index": 1,
+        "label": "N2",
+        "side": "N",
+        "edge_s": 1.2634,
+        "edge_xy": [
+          2.2714,
+          2.4784
+        ],
+        "seat_xy": [
+          2.2714,
+          2.7263
+        ],
+        "occupied_by": "S17"
+      },
+      {
+        "index": 2,
+        "label": "N3",
+        "side": "N",
+        "edge_s": 1.9096,
+        "edge_xy": [
+          2.9176,
+          2.4784
+        ],
+        "seat_xy": [
+          2.9176,
+          2.7263
+        ],
+        "occupied_by": "S01"
+      },
+      {
+        "index": 3,
+        "label": "N4",
+        "side": "N",
+        "edge_s": 2.5559,
+        "edge_xy": [
+          3.5639,
+          2.4784
+        ],
+        "seat_xy": [
+          3.5639,
+          2.7263
+        ],
+        "occupied_by": "S04"
+      },
+      {
+        "index": 4,
+        "label": "N5",
+        "side": "N",
+        "edge_s": 3.2021,
+        "edge_xy": [
+          4.2101,
+          2.4784
+        ],
+        "seat_xy": [
+          4.2101,
+          2.7263
+        ],
+        "occupied_by": "S06"
+      },
+      {
+        "index": 5,
+        "label": "N6",
+        "side": "N",
+        "edge_s": 3.8484,
+        "edge_xy": [
+          4.8564,
+          2.4784
+        ],
+        "seat_xy": [
+          4.8564,
+          2.7263
+        ],
+        "occupied_by": "S05"
+      },
+      {
+        "index": 6,
+        "label": "E",
+        "side": "E",
+        "edge_s": 0.5811,
+        "edge_xy": [
+          5.4735,
+          1.8973
+        ],
+        "seat_xy": [
+          5.7214,
+          1.8973
+        ],
+        "occupied_by": "S11"
+      },
+      {
+        "index": 7,
+        "label": "S1",
+        "side": "S",
+        "edge_s": 0.6171,
+        "edge_xy": [
+          4.8564,
+          1.3163
+        ],
+        "seat_xy": [
+          4.8564,
+          1.0684
+        ],
+        "occupied_by": "S13"
+      },
+      {
+        "index": 8,
+        "label": "S2",
+        "side": "S",
+        "edge_s": 1.2634,
+        "edge_xy": [
+          4.2101,
+          1.3163
+        ],
+        "seat_xy": [
+          4.2101,
+          1.0684
+        ],
+        "occupied_by": "S03"
+      },
+      {
+        "index": 9,
+        "label": "S3",
+        "side": "S",
+        "edge_s": 1.9096,
+        "edge_xy": [
+          3.5639,
+          1.3163
+        ],
+        "seat_xy": [
+          3.5639,
+          1.0684
+        ],
+        "occupied_by": "S12"
+      },
+      {
+        "index": 10,
+        "label": "S4",
+        "side": "S",
+        "edge_s": 2.5559,
+        "edge_xy": [
+          2.9176,
+          1.3163
+        ],
+        "seat_xy": [
+          2.9176,
+          1.0684
+        ],
+        "occupied_by": "S15"
+      },
+      {
+        "index": 11,
+        "label": "S5",
+        "side": "S",
+        "edge_s": 3.2021,
+        "edge_xy": [
+          2.2714,
+          1.3163
+        ],
+        "seat_xy": [
+          2.2714,
+          1.0684
+        ],
+        "occupied_by": "S18"
+      },
+      {
+        "index": 12,
+        "label": "S6",
+        "side": "S",
+        "edge_s": 3.8484,
+        "edge_xy": [
+          1.6251,
+          1.3163
+        ],
+        "seat_xy": [
+          1.6251,
+          1.0684
+        ],
+        "occupied_by": "S08"
+      },
+      {
+        "index": 13,
+        "label": "W",
+        "side": "W",
+        "edge_s": 0.5811,
+        "edge_xy": [
+          1.008,
+          1.8973
+        ],
+        "seat_xy": [
+          0.7601,
+          1.8973
+        ],
+        "occupied_by": "S07"
+      }
+    ]
+  },
+  "wall_chairs": [
+    {
+      "index": 0,
+      "wall": "N",
+      "offset": 0.5997,
+      "xy": [
+        0.4265,
+        6.2822
+      ],
+      "occupied_by": "S19"
+    },
+    {
+      "index": 1,
+      "wall": "N",
+      "offset": 0.5997,
+      "xy": [
+        0.9534,
+        6.2822
+      ],
+      "occupied_by": "S14"
+    },
+    {
+      "index": 2,
+      "wall": "N",
+      "offset": 0.5997,
+      "xy": [
+        1.4803,
+        6.2822
+      ],
+      "occupied_by": "S20"
+    },
+    {
+      "index": 3,
+      "wall": "N",
+      "offset": 0.5997,
+      "xy": [
+        2.0072,
+        6.2822
+      ],
+      "occupied_by": "S16"
+    }
+  ],
+  "people": [
+    {
+      "speaker_id": "S01",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 2
+      },
+      "mouth": [
+        2.9176,
+        2.7263,
+        1.1302
+      ],
+      "facing_deg": -92.4919,
+      "presenter": null,
+      "is_chair": true,
+      "turn_share": 0.278,
+      "nsc_speaker": {
+        "speaker": "00862455",
+        "split": "test",
+        "gender": "M",
+        "age": "4X",
+        "ethnicity": "CHINESE",
+        "first_language": "ENGLISH",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Chee Keong Ng",
+        "role": "principal consultant",
+        "seniority": "senior",
+        "verbosity": "high",
+        "gender": "M",
+        "age_band": "4X",
+        "ethnicity": "CHINESE",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "low",
+        "switch_languages": [
+          "Mandarin"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S02",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 0
+      },
+      "mouth": [
+        1.6251,
+        2.7263,
+        1.1705
+      ],
+      "facing_deg": -10.5117,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.139,
+      "nsc_speaker": {
+        "speaker": "00862621",
+        "split": "test",
+        "gender": "M",
+        "age": "3X",
+        "ethnicity": "CHINESE",
+        "first_language": "ENGLISH",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Wei Ming Ng",
+        "role": "designer",
+        "seniority": "mid",
+        "verbosity": "high",
+        "gender": "M",
+        "age_band": "3X",
+        "ethnicity": "CHINESE",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Mandarin"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S03",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 8
+      },
+      "mouth": [
+        4.2101,
+        1.0684,
+        1.1384
+      ],
+      "facing_deg": 176.4453,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0927,
+      "nsc_speaker": {
+        "speaker": "00862754",
+        "split": "test",
+        "gender": "F",
+        "age": "5X",
+        "ethnicity": "CHINESE",
+        "first_language": "ENGLISH",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Pei Shan Ang",
+        "role": "designer",
+        "seniority": "mid",
+        "verbosity": "high",
+        "gender": "F",
+        "age_band": "5X",
+        "ethnicity": "CHINESE",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Mandarin",
+          "Hokkien"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S04",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 3
+      },
+      "mouth": [
+        3.5639,
+        2.7263,
+        1.1055
+      ],
+      "facing_deg": -88.1928,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0695,
+      "nsc_speaker": {
+        "speaker": "00862436",
+        "split": "test",
+        "gender": "M",
+        "age": "2X",
+        "ethnicity": "INDIAN",
+        "first_language": "TAMIL",
+        "languages": [
+          "TAMIL",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Arun Kumar",
+        "role": "associate",
+        "seniority": "junior",
+        "verbosity": "high",
+        "gender": "M",
+        "age_band": "2X",
+        "ethnicity": "INDIAN",
+        "l1": "Tamil",
+        "accent": "Singapore English, Tamil L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Tamil"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S05",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 5
+      },
+      "mouth": [
+        4.8564,
+        2.7263,
+        1.1069
+      ],
+      "facing_deg": -170.5421,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0556,
+      "nsc_speaker": {
+        "speaker": "00862484",
+        "split": "test",
+        "gender": "F",
+        "age": "1X",
+        "ethnicity": "INDIAN",
+        "first_language": "TAMIL",
+        "languages": [
+          "TAMIL",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Deepa Subramaniam",
+        "role": "intern",
+        "seniority": "intern",
+        "verbosity": "medium",
+        "gender": "F",
+        "age_band": "1X",
+        "ethnicity": "INDIAN",
+        "l1": "Tamil",
+        "accent": "Singapore English, Tamil L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Tamil"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S06",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 4
+      },
+      "mouth": [
+        4.2101,
+        2.7263,
+        1.1265
+      ],
+      "facing_deg": -124.0556,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0463,
+      "nsc_speaker": {
+        "speaker": "00862907",
+        "split": "test",
+        "gender": "M",
+        "age": "2X",
+        "ethnicity": "MALAY",
+        "first_language": "MALAY",
+        "languages": [
+          "MALAY",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Syafiq bin Rahman",
+        "role": "admin officer",
+        "seniority": "junior",
+        "verbosity": "high",
+        "gender": "M",
+        "age_band": "2X",
+        "ethnicity": "MALAY",
+        "l1": "Malay",
+        "accent": "Singapore English, Malay L1",
+        "code_switching": "high",
+        "switch_languages": [
+          "Malay"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S07",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 13
+      },
+      "mouth": [
+        0.7601,
+        1.8973,
+        1.1132
+      ],
+      "facing_deg": 14.6054,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0397,
+      "nsc_speaker": {
+        "speaker": "00862034",
+        "split": "test",
+        "gender": "M",
+        "age": "5X",
+        "ethnicity": "INDIAN",
+        "first_language": "TAMIL",
+        "languages": [
+          "ENGLISH",
+          "TAMIL"
+        ]
+      },
+      "persona": {
+        "display_name": "Karthik Pillai",
+        "role": "chief operating officer",
+        "seniority": "exec",
+        "verbosity": "high",
+        "gender": "M",
+        "age_band": "5X",
+        "ethnicity": "INDIAN",
+        "l1": "Tamil",
+        "accent": "Singapore English, Tamil L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Tamil"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S08",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 12
+      },
+      "mouth": [
+        1.6251,
+        1.0684,
+        1.1567
+      ],
+      "facing_deg": 33.5066,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0347,
+      "nsc_speaker": {
+        "speaker": "00862875",
+        "split": "test",
+        "gender": "F",
+        "age": "2X",
+        "ethnicity": "CHINESE",
+        "first_language": "CHINESE",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Rachel Yeo",
+        "role": "analyst",
+        "seniority": "junior",
+        "verbosity": "medium",
+        "gender": "F",
+        "age_band": "2X",
+        "ethnicity": "CHINESE",
+        "l1": "Mandarin",
+        "accent": "Singapore English, Mandarin L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Mandarin",
+          "Hokkien",
+          "Cantonese"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S09",
+      "position_type": "remote",
+      "wall_reason": null,
+      "seat": null,
+      "mouth": null,
+      "facing_deg": null,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0309,
+      "nsc_speaker": {
+        "speaker": "00862335",
+        "split": "test",
+        "gender": "F",
+        "age": "2X",
+        "ethnicity": "INDIAN",
+        "first_language": "ENGLISH",
+        "languages": [
+          "MALAY",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Priya Subramaniam",
+        "role": "QA engineer",
+        "seniority": "mid",
+        "verbosity": "medium",
+        "gender": "F",
+        "age_band": "2X",
+        "ethnicity": "INDIAN",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "low",
+        "switch_languages": [
+          "Malay"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S10",
+      "position_type": "remote",
+      "wall_reason": null,
+      "seat": null,
+      "mouth": null,
+      "facing_deg": null,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0278,
+      "nsc_speaker": {
+        "speaker": "00862462",
+        "split": "test",
+        "gender": "M",
+        "age": "2X",
+        "ethnicity": "MALAY",
+        "first_language": "MALAY",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Azman binte Ismail",
+        "role": "executive",
+        "seniority": "junior",
+        "verbosity": "low",
+        "gender": "M",
+        "age_band": "2X",
+        "ethnicity": "MALAY",
+        "l1": "Malay",
+        "accent": "Singapore English, Malay L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Malay",
+          "Mandarin"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S11",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 6
+      },
+      "mouth": [
+        5.7214,
+        1.8973,
+        1.11
+      ],
+      "facing_deg": -129.1559,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0253,
+      "nsc_speaker": {
+        "speaker": "00862654",
+        "split": "test",
+        "gender": "F",
+        "age": "6X",
+        "ethnicity": "INDIAN",
+        "first_language": "ENGLISH",
+        "languages": [
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Lakshmi Menon",
+        "role": "project lead",
+        "seniority": "senior",
+        "verbosity": "low",
+        "gender": "F",
+        "age_band": "6X",
+        "ethnicity": "INDIAN",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "low",
+        "switch_languages": []
+      }
+    },
+    {
+      "speaker_id": "S12",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 9
+      },
+      "mouth": [
+        3.5639,
+        1.0684,
+        1.1436
+      ],
+      "facing_deg": 89.2684,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0232,
+      "nsc_speaker": {
+        "speaker": "00862908",
+        "split": "test",
+        "gender": "M",
+        "age": "4X",
+        "ethnicity": "MALAY",
+        "first_language": "MALAY",
+        "languages": [
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Faizal binte Yusof",
+        "role": "ops executive",
+        "seniority": "mid",
+        "verbosity": "medium",
+        "gender": "M",
+        "age_band": "4X",
+        "ethnicity": "MALAY",
+        "l1": "Malay",
+        "accent": "Singapore English, Malay L1",
+        "code_switching": "low",
+        "switch_languages": [
+          "Malay"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S13",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 7
+      },
+      "mouth": [
+        4.8564,
+        1.0684,
+        1.133
+      ],
+      "facing_deg": 108.9509,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0214,
+      "nsc_speaker": {
+        "speaker": "00862714",
+        "split": "test",
+        "gender": "F",
+        "age": "4X",
+        "ethnicity": "CHINESE",
+        "first_language": "CHINESE",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Michelle Koh",
+        "role": "regional manager",
+        "seniority": "senior",
+        "verbosity": "medium",
+        "gender": "F",
+        "age_band": "4X",
+        "ethnicity": "CHINESE",
+        "l1": "Mandarin",
+        "accent": "Singapore English, Mandarin L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Mandarin",
+          "Cantonese"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S14",
+      "position_type": "wall",
+      "wall_reason": "overflow",
+      "seat": {
+        "kind": "wall",
+        "index": 1
+      },
+      "mouth": [
+        0.9534,
+        6.2822,
+        1.118
+      ],
+      "facing_deg": -68.7077,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0199,
+      "nsc_speaker": {
+        "speaker": "00862681",
+        "split": "test",
+        "gender": "F",
+        "age": "3X",
+        "ethnicity": "CHINESE",
+        "first_language": "ENGLISH",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Mei Ling Ong",
+        "role": "analyst",
+        "seniority": "junior",
+        "verbosity": "high",
+        "gender": "F",
+        "age_band": "3X",
+        "ethnicity": "CHINESE",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "high",
+        "switch_languages": [
+          "Mandarin",
+          "Hokkien",
+          "Cantonese"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S15",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 10
+      },
+      "mouth": [
+        2.9176,
+        1.0684,
+        1.1212
+      ],
+      "facing_deg": 19.6767,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0185,
+      "nsc_speaker": {
+        "speaker": "00862684",
+        "split": "test",
+        "gender": "F",
+        "age": "4X",
+        "ethnicity": "MALAY",
+        "first_language": "ENGLISH",
+        "languages": [
+          "MALAY",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Syafiqah bin Osman",
+        "role": "product manager",
+        "seniority": "mid",
+        "verbosity": "medium",
+        "gender": "F",
+        "age_band": "4X",
+        "ethnicity": "MALAY",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "low",
+        "switch_languages": [
+          "Malay"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S16",
+      "position_type": "wall",
+      "wall_reason": "overflow",
+      "seat": {
+        "kind": "wall",
+        "index": 3
+      },
+      "mouth": [
+        2.0072,
+        6.2822,
+        1.1861
+      ],
+      "facing_deg": -116.8858,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0174,
+      "nsc_speaker": {
+        "speaker": "00862084",
+        "split": "test",
+        "gender": "F",
+        "age": "4X",
+        "ethnicity": "MALAY",
+        "first_language": "ENGLISH",
+        "languages": [
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Farah binte Ismail",
+        "role": "account manager",
+        "seniority": "mid",
+        "verbosity": "low",
+        "gender": "F",
+        "age_band": "4X",
+        "ethnicity": "MALAY",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "low",
+        "switch_languages": []
+      }
+    },
+    {
+      "speaker_id": "S17",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 1
+      },
+      "mouth": [
+        2.2714,
+        2.7263,
+        1.1119
+      ],
+      "facing_deg": -32.9468,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0164,
+      "nsc_speaker": {
+        "speaker": "00862862",
+        "split": "test",
+        "gender": "M",
+        "age": "3X",
+        "ethnicity": "CHINESE",
+        "first_language": "ENGLISH",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Zhi Hao Koh",
+        "role": "engineer",
+        "seniority": "mid",
+        "verbosity": "low",
+        "gender": "M",
+        "age_band": "3X",
+        "ethnicity": "CHINESE",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "low",
+        "switch_languages": [
+          "Mandarin"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S18",
+      "position_type": "table",
+      "wall_reason": null,
+      "seat": {
+        "kind": "table",
+        "index": 11
+      },
+      "mouth": [
+        2.2714,
+        1.0684,
+        1.1292
+      ],
+      "facing_deg": 81.6414,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0154,
+      "nsc_speaker": {
+        "speaker": "00862181",
+        "split": "test",
+        "gender": "M",
+        "age": "4X",
+        "ethnicity": "CHINESE",
+        "first_language": "CHINESE",
+        "languages": [
+          "CHINESE",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Wei Ming Ong",
+        "role": "ops executive",
+        "seniority": "mid",
+        "verbosity": "medium",
+        "gender": "M",
+        "age_band": "4X",
+        "ethnicity": "CHINESE",
+        "l1": "Mandarin",
+        "accent": "Singapore English, Mandarin L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Mandarin"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S19",
+      "position_type": "wall",
+      "wall_reason": "overflow",
+      "seat": {
+        "kind": "wall",
+        "index": 0
+      },
+      "mouth": [
+        0.4265,
+        6.2822,
+        1.1166
+      ],
+      "facing_deg": -62.7929,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0146,
+      "nsc_speaker": {
+        "speaker": "00862233",
+        "split": "test",
+        "gender": "M",
+        "age": "2X",
+        "ethnicity": "MALAY",
+        "first_language": "MALAY",
+        "languages": [
+          "MALAY",
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Rizwan bin Rahman",
+        "role": "junior engineer",
+        "seniority": "junior",
+        "verbosity": "low",
+        "gender": "M",
+        "age_band": "2X",
+        "ethnicity": "MALAY",
+        "l1": "Malay",
+        "accent": "Singapore English, Malay L1",
+        "code_switching": "medium",
+        "switch_languages": [
+          "Malay"
+        ]
+      }
+    },
+    {
+      "speaker_id": "S20",
+      "position_type": "wall",
+      "wall_reason": "overflow",
+      "seat": {
+        "kind": "wall",
+        "index": 2
+      },
+      "mouth": [
+        1.4803,
+        6.2822,
+        1.1047
+      ],
+      "facing_deg": -41.9764,
+      "presenter": null,
+      "is_chair": false,
+      "turn_share": 0.0139,
+      "nsc_speaker": {
+        "speaker": "00862650",
+        "split": "test",
+        "gender": "F",
+        "age": "6X",
+        "ethnicity": "OTHERS",
+        "first_language": "ENGLISH",
+        "languages": [
+          "ENGLISH"
+        ]
+      },
+      "persona": {
+        "display_name": "Maria Rodrigues",
+        "role": "head of operations",
+        "seniority": "senior",
+        "verbosity": "low",
+        "gender": "F",
+        "age_band": "6X",
+        "ethnicity": "OTHERS",
+        "l1": "English",
+        "accent": "Singapore English",
+        "code_switching": "low",
+        "switch_languages": []
+      }
+    }
+  ],
+  "mic": {
+    "type": "centre",
+    "position": [
+      3.1935,
+      2.0155,
+      0.8085
+    ],
+    "channels": 1,
+    "array_geometry": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "near_speaker": null
+  },
+  "speakerphone": {
+    "position": [
+      2.64,
+      1.8973,
+      0.8085
+    ],
+    "remote_speakers": [
+      "S09",
+      "S10"
+    ]
+  },
+  "acoustics": {
+    "rt60": 0.8542,
+    "snr_db": 19.3232,
+    "noise_sources": [
+      {
+        "kind": "hvac",
+        "position": [
+          3.3245,
+          3.4409,
+          2.9133
+        ]
+      },
+      {
+        "kind": "keyboard",
+        "position": [
+          4.2101,
+          2.4784,
+          0.7785
+        ]
+      }
+    ],
+    "events": {
+      "door": 0,
+      "chair": 6,
+      "cup": 2,
+      "paper": 1
+    },
+    "events_per_10min": 4.21,
+    "orientation_max_deg": 60.0,
+    "orientation_resample_p": 0.3
+  },
+  "device_chain": {
+    "agc": true,
+    "band_limit_hz": 5682.8874,
+    "codec_kbps": null,
+    "clipping_level": null,
+    "aec_artifacts": true
+  },
+  "dynamics": {
+    "meeting_type": "all-hands update",
+    "topic": "budget overrun on the HDB upgrading works",
+    "duration_min": 30.3568,
+    "n_turns_target": 342,
+    "zipf_exponent": 1.0,
+    "turn_shares": {
+      "S01": 0.278,
+      "S02": 0.139,
+      "S03": 0.0927,
+      "S04": 0.0695,
+      "S05": 0.0556,
+      "S06": 0.0463,
+      "S07": 0.0397,
+      "S08": 0.0347,
+      "S09": 0.0309,
+      "S10": 0.0278,
+      "S11": 0.0253,
+      "S12": 0.0232,
+      "S13": 0.0214,
+      "S14": 0.0199,
+      "S15": 0.0185,
+      "S16": 0.0174,
+      "S17": 0.0164,
+      "S18": 0.0154,
+      "S19": 0.0146,
+      "S20": 0.0139
+    },
+    "chair_id": "S01",
+    "presentation": null,
+    "hybrid": true,
+    "remote_speakers": [
+      "S09",
+      "S10"
+    ]
+  }
+}

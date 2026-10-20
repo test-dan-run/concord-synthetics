@@ -283,7 +283,8 @@ class RefScoresHigher:
         from synthetics.nsc.settings import nsc_paths
 
         idx = ReferenceIndex.load(nsc_paths())
-        self.refs = {self._key(idx.voice_ref(c.pair_id).audio) for s in idx.speakers() for c in idx.clips(s)}
+        # what stage 5 scores in fake mode: the fake voice of each clip
+        self.refs = {self._key(idx.voice_ref(c.pair_id, fake=True).audio) for s in idx.speakers() for c in idx.clips(s)}
         self.ref, self.clone = ref, clone
 
     @staticmethod
@@ -458,3 +459,22 @@ def test_nsc_nonlexical_selection_and_shaping():
     short = np.zeros(sr, np.float32)
     short[100:100 + int(0.1 * sr)] = 0.3
     assert shape(Audio(short, sr)) is None and MIN_S > 0.1
+
+
+def test_fake_backends_stand_in_a_fake_voice_for_real_reference_audio(tmp_path):
+    from synthetics.backends.base import VoiceRef
+    from synthetics.backends.fakes_audio import FakeVoiceCloner
+    from synthetics.nsc.references import RefClip, ReferenceIndex
+
+    # real speech carries none of the fake voice tones; noise stands in for it
+    path = tmp_path / "00860519_0845.wav"
+    Audio(np.random.default_rng(0).normal(0, 0.1, 16000 * 3).astype(np.float32), 16000).save(path)
+    refs = ReferenceIndex([RefClip(speaker="00860519", pair_id="00860519_0845", path=path, text="hello lah",
+                                   duration=3.0, mos=3.0, gender="F", age="2X", ethnicity="Chinese",
+                                   first_language="English", split="train")])
+    sv = FakeSpeakerEmbedder()
+    fake = refs.voice_ref("00860519_0845", fake=True)
+    clone = FakeVoiceCloner(sr=16000).clone("good morning everyone", fake, seed=1)
+    assert float(sv.embed([fake.audio])[0] @ sv.embed([clone])[0]) == pytest.approx(1.0)
+    real = refs.voice_ref("00860519_0845")
+    assert isinstance(real, VoiceRef) and float(sv.embed([real.audio])[0] @ sv.embed([clone])[0]) < 0.9

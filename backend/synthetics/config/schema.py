@@ -199,8 +199,8 @@ class AcousticsConfig(_M):
 class TurnTakingConfig(_M):
     zipf: Zipf = Zipf(exponent=1.0)
     gap: LogNormal = LogNormal(median=0.3, sigma=0.6, cap=2.0)
-    overlap_share: float = 0.3  # of transitions
-    overlap_lead: Uniform = Uniform(lo=0.1, hi=1.0)  # next turn starts this long before the previous ends
+    overlap_share: float = 0.5  # of transitions
+    overlap_lead: Uniform = Uniform(lo=0.3, hi=2.0)  # next turn starts this long before the previous ends
     overlap_max_frac: float = 0.5  # at most half the previous turn
     overlap_target: PerClass[Uniform]  # share of speech time
     interruption_rate: Uniform = Uniform(lo=0.05, hi=0.10)  # of turn changes
@@ -442,6 +442,11 @@ class LabelsConfig(_M):
 
 class RunConfig(_M):
     schema_version: Literal["1"] = "1"
+    # How a run samples and caches. 1: runs made before Oct 21, 2026, which a frozen config without the field is.
+    # 2 (the default for new runs, set in stages.yaml): stage 1 draws the acoustic values (`ACOUSTIC_FIELDS` of
+    # meeting.json) from their own random stream, and stages 2-6 hash meeting.json without them, so a change to a
+    # sampled acoustic distribution re-runs only stages 1, 7 and 8.
+    revision: int = 1
     run_id: str
     seed: int
     n_meetings: int

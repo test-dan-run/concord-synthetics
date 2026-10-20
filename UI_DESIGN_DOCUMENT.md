@@ -214,12 +214,14 @@ The viewer reads the pipeline's storage layout directly and computes everything 
 
 Computed in the UI: mouth-to-mic distance in 3D, facing angle relative to the table centre, table edge per person, room volume, histogram bins, and `text_norm` when it is not already stored.
 
-New fields needed from the pipeline:
+New fields needed from the pipeline (all in place since M10, Oct 21, 2026):
 
 - The **rendered persona prompt** per speaker, written by stage 2 to `prompts/<speaker_id>.txt` alongside `script.json`.
-- **Turn-taking statistics** per meeting in `manifest.jsonl`, computed by stage 6 from the timeline: overlap share of speech time, backchannels per minute, interruptions as a share of turn changes.
-- A **fit resample count** in `meeting.json` or `status.json` for the "needed a room resample" tile.
-- **Speaker facing per turn** if the plan should show it per turn; v1 shows one sampled direction per seat.
+- **Turn-taking statistics** per meeting in `manifest.jsonl` (`turn_taking`), computed by stage 6 from the timeline: overlap share of speech time, backchannels per minute, interruptions as a share of turn changes, plus the raw counts.
+- A **fit resample count** in `meeting.json` (`fit_resamples`), also in the manifest's `sampled` and the stage 1 metrics in `status.json`.
+- **Speaker facing per turn: not in v1.** Decided Oct 21, 2026: the plan shows the one sampled direction per seat (`people[].facing_deg`). Stage 7 does turn talkers between turns, but it does not write those directions out; per-turn facing waits until a later viewer version asks for it.
+
+Where the other fields live: mic type, table shape and hybrid are `sampled["mic.type"]`, `sampled["table.shape"]` and `sampled["dynamics.hybrid"]` in the manifest; wall-seated and presenter counts are `position_counts`; sampled RT60 and SNR are `sampled["acoustics.rt60"]` and `sampled["acoustics.snr_db"]`, and the measured values are in `acoustic`. The NSC reference speaker per persona is `speakers[].nsc_speaker` in the manifest (or `synthesis.json`), which reflects any stage 4 voice swap; `meeting.json` keeps the first assignment. `asr_limited` is always false in current runs, because phase C no longer runs the Singlish fallback ASR, so the speaker card shows it as "n/a" when no utterance is flagged. `synthetics viewer-contract -r <run>` checks every row of this table on a run.
 
 ## Accessibility and responsive behaviour
 

@@ -11,7 +11,6 @@ Stage 6 takes meetings whose stage 5 passed (or is switched off). Everything is 
 from __future__ import annotations
 
 import logging
-import time
 
 from ..config.schema import Phase, StageId
 from ..export.manifest import write_run_manifest
@@ -40,14 +39,16 @@ def run_post(sched, ids: list[str], report, *, until: StageId = StageId.LABELS, 
         return only is None or only == p
 
     if want(Phase.CPU):
-        t0 = time.monotonic()
+        from .scheduler import Stopwatch
+
+        watch = Stopwatch(sched.run_dir, report, "CPU-post")
         voiced = [m for m in ids if sched.state(m, StageId.VOICE_VAL) in READY
                   and sched.state(m, StageId.VOICE) in READY and not sched.store.dropped(m)]
         for mid in voiced:
             sched._run(StageId.ASSEMBLE, [mid], report)
             if until >= StageId.ACOUSTIC and sched.state(mid, StageId.ASSEMBLE) in READY:
                 sched._run(StageId.ACOUSTIC, [mid], report)
-        report.phase_seconds["CPU-post"] = report.phase_seconds.get("CPU-post", 0.0) + time.monotonic() - t0
+            watch.tick()
     if until < StageId.LABELS:
         return
     s8 = sched.stages[StageId.LABELS]

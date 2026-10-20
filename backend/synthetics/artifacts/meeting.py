@@ -13,6 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..config.schema import RoomClass, Wall
 
+# Drawn from stage 1's acoustic random stream (RunConfig.revision 2) and read only by stages 7 and 8: stages 2-6
+# hash meeting.json without them
+ACOUSTIC_FIELDS = (("room", "walls"), ("room", "floor"), ("room", "ceiling"), ("room", "rt60_target"),
+                   ("acoustics",), ("device_chain",))
+
 Vec2 = tuple[float, float]
 Vec3 = tuple[float, float, float]
 PositionType = Literal["table", "wall", "presenter", "remote"]

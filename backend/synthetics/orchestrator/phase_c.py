@@ -10,7 +10,6 @@ The scheduler calls it in one line after the script rounds:
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
 
 from ..backends.registry import Backends
@@ -39,15 +38,17 @@ def max_rounds(cfg: RunConfig) -> int:
 
 
 def pending(run_dir: Path, cfg: RunConfig, ids: list[str]) -> list[str]:
-    """Meetings whose script passed and whose stages 4-5 are not both fresh passes."""
+    """Meetings whose script passed (or whose stage 3 is switched off) and whose stages 4-5 are not both fresh
+    passes. With stage 5 switched off, a fresh stage 4 is enough."""
     store = StatusStore(run_dir)
     s = stages()
     out = []
     for mid in ids:
         st = store.get(mid)
-        if st.get(StageId.SCRIPT_VAL).state != "pass" or st.get(StageId.VOICE_VAL).state in ("dropped", "skipped"):
+        if st.get(StageId.SCRIPT_VAL).state not in ("pass", "skipped") or st.get(StageId.VOICE_VAL).state == "dropped":
             continue
-        if is_fresh(s[StageId.VOICE], run_dir, mid, cfg) and is_fresh(s[StageId.VOICE_VAL], run_dir, mid, cfg):
+        if is_fresh(s[StageId.VOICE], run_dir, mid, cfg) and (not cfg.enabled(StageId.VOICE_VAL)
+                                                               or is_fresh(s[StageId.VOICE_VAL], run_dir, mid, cfg)):
             continue
         out.append(mid)
     return out
@@ -78,15 +79,18 @@ def run_phase_c(sched, ids: list[str], report) -> None:
     todo = pending(sched.run_dir, sched.cfg, ids)
     if not todo:
         return
+    from .scheduler import Stopwatch
+
     sched.preflight([Phase.C])
-    t0 = time.monotonic()
+    watch = Stopwatch(sched.run_dir, report, "C")
     log.info("phase C: stages 4-5 on %d meetings (services: %s)", len(todo), ", ".join(sched.services(Phase.C)))
     with sched.lease(Phase.C):
         backends = sched.backends.with_available(sched.phase_roles(Phase.C))
         for mid in todo:
             for o in voice_meeting(sched.run_dir, mid, sched.cfg, backends):
                 report.add(o)
-    report.phase_seconds["C"] = report.phase_seconds.get("C", 0.0) + time.monotonic() - t0
+            watch.tick()
+    watch.tick()  # the lease's release
 
 
 def summarise_c(run_dir: Path) -> dict:

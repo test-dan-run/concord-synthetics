@@ -1,7 +1,11 @@
 """Runs one stage on one meeting: toggle, cache key, seeded RNG, status record, retry hand-off.
 
-Cache key = sha256(stage id, version, config slice, input artifact hashes, pending feedback). A stage is
-skipped when status.json already holds a `pass` with the same key and its outputs exist.
+Cache key = sha256(stage id, version, config slice, input artifact hashes, pending feedback, and the run's revision
+from 2 on). A stage is skipped when status.json already holds a `pass` with the same key and its outputs exist.
+
+From revision 2, stages 2-6 hash meeting.json without its acoustic values (`ACOUSTIC_FIELDS`), which only stages 7
+and 8 read, so resampling the acoustics re-runs stages 1, 7 and 8 alone. Revision 1 runs keep the keys they were
+made with: the revision is left out of their keys and they hash meeting.json whole.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from ..artifacts.io import tree_sha256
+from ..artifacts.meeting import ACOUSTIC_FIELDS
 from ..artifacts.paths import MeetingPaths
 from ..backends.registry import Backends
 from ..config.loader import canonical_json
@@ -39,17 +44,47 @@ def stage_seed_sequence(run_seed: int, m_seed: int, stage: int, attempt: int) ->
     return np.random.SeedSequence([run_seed, m_seed, int(stage), attempt])
 
 
-def input_hashes(stage: Stage, paths: MeetingPaths) -> dict[str, str]:
+# Outputs of the stages an ablation can switch off (stages 3, 5 and 7): a later stage reads them when they exist, and
+# goes ahead without them when their stage is disabled
+ABLATABLE_OUTPUTS = {"script_validation": StageId.SCRIPT_VAL, "voice_validation": StageId.VOICE_VAL,
+                     "render": StageId.ACOUSTIC, "mixture": StageId.ACOUSTIC}
+
+
+def required_reads(stage: Stage, cfg: RunConfig) -> list[str]:
+    return [k for k in stage.reads if k not in ABLATABLE_OUTPUTS or cfg.enabled(ABLATABLE_OUTPUTS[k])]
+
+
+ACOUSTICS_BLIND = {StageId.SCRIPT, StageId.SCRIPT_VAL, StageId.VOICE, StageId.VOICE_VAL, StageId.ASSEMBLE}
+
+
+def meeting_sha_without_acoustics(path: Path) -> str:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for keys in ACOUSTIC_FIELDS:
+        node = data
+        for k in keys[:-1]:
+            node = node.get(k, {})
+        node.pop(keys[-1], None)
+    return hashlib.sha256(canonical_json(data).encode()).hexdigest()
+
+
+def input_hashes(stage: Stage, paths: MeetingPaths, revision: int = 1) -> dict[str, str]:
     out = {}
     for key in stage.reads:
         p = paths.artifact(key)
-        out[key] = tree_sha256(p) if p.exists() else "missing"
+        if not p.exists():
+            out[key] = "missing"
+        elif key == "meeting" and revision >= 2 and stage.id in ACOUSTICS_BLIND:
+            out[key] = meeting_sha_without_acoustics(p)
+        else:
+            out[key] = tree_sha256(p)
     return out
 
 
 def cache_key(stage: Stage, cfg: RunConfig, paths: MeetingPaths, feedback: str | None) -> str:
     body = {"stage": int(stage.id), "version": stage.version, "config": json.loads(canonical_json(stage.config_slice(cfg))),
-            "inputs": input_hashes(stage, paths), "feedback": feedback}
+            "inputs": input_hashes(stage, paths, cfg.revision), "feedback": feedback}
+    if cfg.revision >= 2:
+        body["revision"] = cfg.revision
     return hashlib.sha256(canonical_json(body).encode()).hexdigest()[:16]
 
 
@@ -61,7 +96,7 @@ def is_fresh(stage: Stage, run_dir: Path, meeting_id: str, cfg: RunConfig) -> bo
     """A pass whose cache key still matches and whose outputs exist: running it again would be a cache hit."""
     paths = MeetingPaths(Path(run_dir), meeting_id)
     st = StatusStore(run_dir).get(meeting_id).get(stage.id)
-    if st.state != "pass" or any(not paths.artifact(k).exists() for k in stage.reads):
+    if st.state != "pass" or any(not paths.artifact(k).exists() for k in required_reads(stage, cfg)):
         return False
     return st.cache_key == cache_key(stage, cfg, paths, st.feedback) and outputs_exist(stage, paths)
 
@@ -85,7 +120,7 @@ def run_stage(stage: Stage, run_dir: Path, meeting_id: str, cfg: RunConfig, back
         return RunOutcome(meeting_id, stage.id, "skipped", "disabled in config")
     if status.state == "dropped" and not force:
         return RunOutcome(meeting_id, stage.id, "blocked", "dropped")
-    missing = [k for k in stage.reads if not paths.artifact(k).exists()]
+    missing = [k for k in required_reads(stage, cfg) if not paths.artifact(k).exists()]
     if missing:
         return RunOutcome(meeting_id, stage.id, "blocked", f"missing inputs: {', '.join(missing)}")
 
