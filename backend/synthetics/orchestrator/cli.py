@@ -314,6 +314,16 @@ def voice_report(run: RunOpt,
     raise typer.Exit(0 if res["ran"] >= min_meetings else 1)
 
 
+@app.command("viewer-contract")
+def viewer_contract(run: RunOpt, as_json: Annotated[bool, typer.Option("--json", help="rows as JSON")] = False):
+    """M10 exit check: every field of the UI data contract, on every meeting of the run."""
+    from ..viewer.contract import check_run, format_rows
+
+    rows = check_run(_run_dir(run))
+    typer.echo(json.dumps([r.as_dict() for r in rows], indent=2) if as_json else format_rows(rows))
+    raise typer.Exit(0 if all(r.ok for r in rows) else 1)
+
+
 @app.command("calibrate-sv")
 def calibrate_sv(out: Annotated[Path, typer.Option(help="YAML overlay to write")] = Path("config/sv_thresholds.yaml"),
                  mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",
