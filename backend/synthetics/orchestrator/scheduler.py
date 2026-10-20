@@ -49,6 +49,22 @@ class RunReport:
         self.outcomes.append(o)
 
 
+class Stopwatch:
+    """Time spent in one phase, recorded in the report and the run's ledger at every `tick` (each meeting)."""
+
+    def __init__(self, run_dir: Path, report: RunReport, phase: str):
+        self.run_dir, self.report, self.phase = run_dir, report, phase
+        self.t = time.monotonic()
+
+    def tick(self) -> None:
+        from .run_report import record_seconds
+
+        now = time.monotonic()
+        dt, self.t = now - self.t, now
+        self.report.phase_seconds[self.phase] = self.report.phase_seconds.get(self.phase, 0.0) + dt
+        record_seconds(self.run_dir, self.phase, dt)
+
+
 class PhaseScheduler:
     def __init__(self, run_dir: Path, cfg: RunConfig, *, backends: Backends | None = None,
                  lease_factory: Callable[..., GpuLease] = GpuLease, keep_services: bool = False):
@@ -96,22 +112,25 @@ class PhaseScheduler:
     def state(self, meeting_id: str, stage: StageId) -> str:
         return self.store.get(meeting_id).get(stage).state
 
-    def _run(self, stage: StageId, ids: list[str], report: RunReport, available: list[Role] | None = None) -> None:
+    def _run(self, stage: StageId, ids: list[str], report: RunReport, available: list[Role] | None = None,
+             watch: Stopwatch | None = None) -> None:
         backends = self.backends.with_available(available)
         for mid in ids:
             out = run_stage(self.stages[stage], self.run_dir, mid, self.cfg, backends)
             report.add(out)
             log.info("%s s%d %s %s", mid, int(stage), out.state, out.detail)
+            if watch is not None:
+                watch.tick()
 
     def _phase(self, phase: Phase, stage: StageId, ids: list[str], report: RunReport) -> None:
         if not ids:
             return
-        t0 = time.monotonic()
+        watch = Stopwatch(self.run_dir, report, phase.value)
         log.info("phase %s: stage %d on %d meetings (services: %s)", phase.value, int(stage), len(ids),
                  ", ".join(self.services(phase)) or "none")
         with self.lease(phase):
-            self._run(stage, ids, report, available=self.phase_roles(phase))
-        report.phase_seconds[phase.value] = report.phase_seconds.get(phase.value, 0.0) + time.monotonic() - t0
+            self._run(stage, ids, report, available=self.phase_roles(phase), watch=watch)
+        watch.tick()  # the lease's release
 
     # ---------------------------------------------------------------- the run
 
@@ -127,9 +146,9 @@ class PhaseScheduler:
             self.preflight([p for p in gpu_phases if (p == Phase.A) or until >= StageId.SCRIPT_VAL])
 
         if want(Phase.CPU):
-            t0 = time.monotonic()
+            watch = Stopwatch(self.run_dir, report, "CPU")
             self._run(StageId.SAMPLE, ids, report)
-            report.phase_seconds["CPU"] = time.monotonic() - t0
+            watch.tick()
         if until < StageId.SCRIPT:
             return report
 

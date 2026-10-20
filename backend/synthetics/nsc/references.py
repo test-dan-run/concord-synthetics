@@ -92,8 +92,14 @@ class ReferenceIndex:
                 and self._by_speaker.get(s)]
         return min(pool, key=rank) if pool else None
 
-    def voice_ref(self, pair_id: str) -> VoiceRef:
+    def voice_ref(self, pair_id: str, *, fake: bool = False) -> VoiceRef:
+        """`fake` (fake backends): the clip's fake voice in place of its audio. The fake speaker embedder reads the
+        voice from tones in the audio, so a fake run on real NSC references would otherwise fail stage 5."""
         c = self.clip(pair_id)
+        if fake:
+            from ..backends.fakes_audio import fake_reference
+
+            return VoiceRef(audio=fake_reference(c.pair_id, n_words=5), text=c.text, clip_id=c.pair_id)
         return VoiceRef(audio=_audio(str(c.path)), text=c.text, clip_id=c.pair_id)
 
 

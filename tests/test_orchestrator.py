@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 from helpers import fake_run
-from synthetics.config.schema import Phase
+from synthetics.config.schema import Phase, StageId
 from synthetics.orchestrator.lease import GpuLease, LeaseError
 from synthetics.orchestrator.scheduler import PhaseScheduler
 from synthetics.orchestrator.status import StatusStore
@@ -109,3 +109,35 @@ def test_judge_set_export_and_threshold_fit(tmp_path):
     res = fit_threshold(sheet, out=out)
     assert res["balanced_accuracy"] == 1.0 and 3.8 < res["judge_pass"] < 3.9
     assert res["n_scripts"] == 12 and "judge_pass" in out.read_text()
+
+
+def test_a_killed_run_keeps_the_phase_time_it_spent(tmp_path, monkeypatch):
+    import json
+
+    from synthetics.orchestrator import phase_c
+    from synthetics.orchestrator.run_report import LEDGER, write_run_report
+    from voice_helpers import fake_refs
+
+    monkeypatch.setenv("NSC_REFS_DIR", str(fake_refs(tmp_path / "refs")))
+    rd, cfg = fake_run(tmp_path / "run", n=2, seed=11)
+    # a report from before the ledger existed: its totals carry over
+    (rd / "run_report.json").write_text(json.dumps({"phase_seconds": {"A": 100.0}}))
+    real = phase_c.voice_meeting
+    calls = []
+
+    def dies_on_the_second(*a, **kw):
+        calls.append(a[1])
+        if len(calls) == 2:
+            raise KeyboardInterrupt  # killed in the middle of phase C
+        return real(*a, **kw)
+
+    monkeypatch.setattr(phase_c, "voice_meeting", dies_on_the_second)
+    sched = PhaseScheduler(rd, cfg, lease_factory=lambda s, **kw: GpuLease(s, **{**kw, "enabled": False}))
+    with pytest.raises(KeyboardInterrupt):
+        sched.run(until=StageId.LABELS)
+    lines = [json.loads(x) for x in (rd / LEDGER).read_text().splitlines()]
+    assert lines[0] == {"phase": "A", "seconds": 100.0, "from": "run_report.json"}
+    recorded = {x["phase"] for x in lines[1:]}
+    assert recorded >= {"CPU", "A", "B", "C"}, recorded  # phase C's first meeting was recorded before the kill
+    rep = write_run_report(rd)
+    assert rep["phase_seconds"]["A"] >= 100.0 and rep["phase_seconds"]["C"] > 0

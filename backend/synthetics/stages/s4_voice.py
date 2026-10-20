@@ -163,7 +163,7 @@ class VoiceStage:
             seed = utterance_seed(m.seed, i, attempt)
             sid = turn.speaker_id
             if sid not in voice_refs:
-                voice_refs[sid] = refs.voice_ref(voices[sid].clip_id)
+                voice_refs[sid] = refs.voice_ref(voices[sid].clip_id, fake=cfg.backends.mode == "fake")
             audio, source, tts_text, clips, sr_used = self._render(turn, voice_refs[sid], cloner, lib, lex,
                                                                    gender.get(sid), pick[sid], seed,
                                                                    f"{m.meeting_id}|{turn.turn_id}", ctx)
