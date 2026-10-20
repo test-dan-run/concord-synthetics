@@ -44,6 +44,16 @@ def stage_seed_sequence(run_seed: int, m_seed: int, stage: int, attempt: int) ->
     return np.random.SeedSequence([run_seed, m_seed, int(stage), attempt])
 
 
+# Outputs of the stages an ablation can switch off (stages 3, 5 and 7): a later stage reads them when they exist, and
+# goes ahead without them when their stage is disabled
+ABLATABLE_OUTPUTS = {"script_validation": StageId.SCRIPT_VAL, "voice_validation": StageId.VOICE_VAL,
+                     "render": StageId.ACOUSTIC, "mixture": StageId.ACOUSTIC}
+
+
+def required_reads(stage: Stage, cfg: RunConfig) -> list[str]:
+    return [k for k in stage.reads if k not in ABLATABLE_OUTPUTS or cfg.enabled(ABLATABLE_OUTPUTS[k])]
+
+
 ACOUSTICS_BLIND = {StageId.SCRIPT, StageId.SCRIPT_VAL, StageId.VOICE, StageId.VOICE_VAL, StageId.ASSEMBLE}
 
 
@@ -86,7 +96,7 @@ def is_fresh(stage: Stage, run_dir: Path, meeting_id: str, cfg: RunConfig) -> bo
     """A pass whose cache key still matches and whose outputs exist: running it again would be a cache hit."""
     paths = MeetingPaths(Path(run_dir), meeting_id)
     st = StatusStore(run_dir).get(meeting_id).get(stage.id)
-    if st.state != "pass" or any(not paths.artifact(k).exists() for k in stage.reads):
+    if st.state != "pass" or any(not paths.artifact(k).exists() for k in required_reads(stage, cfg)):
         return False
     return st.cache_key == cache_key(stage, cfg, paths, st.feedback) and outputs_exist(stage, paths)
 
@@ -110,7 +120,7 @@ def run_stage(stage: Stage, run_dir: Path, meeting_id: str, cfg: RunConfig, back
         return RunOutcome(meeting_id, stage.id, "skipped", "disabled in config")
     if status.state == "dropped" and not force:
         return RunOutcome(meeting_id, stage.id, "blocked", "dropped")
-    missing = [k for k in stage.reads if not paths.artifact(k).exists()]
+    missing = [k for k in required_reads(stage, cfg) if not paths.artifact(k).exists()]
     if missing:
         return RunOutcome(meeting_id, stage.id, "blocked", f"missing inputs: {', '.join(missing)}")
 

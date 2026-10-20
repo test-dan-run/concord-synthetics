@@ -39,15 +39,17 @@ def max_rounds(cfg: RunConfig) -> int:
 
 
 def pending(run_dir: Path, cfg: RunConfig, ids: list[str]) -> list[str]:
-    """Meetings whose script passed and whose stages 4-5 are not both fresh passes."""
+    """Meetings whose script passed (or whose stage 3 is switched off) and whose stages 4-5 are not both fresh
+    passes. With stage 5 switched off, a fresh stage 4 is enough."""
     store = StatusStore(run_dir)
     s = stages()
     out = []
     for mid in ids:
         st = store.get(mid)
-        if st.get(StageId.SCRIPT_VAL).state != "pass" or st.get(StageId.VOICE_VAL).state in ("dropped", "skipped"):
+        if st.get(StageId.SCRIPT_VAL).state not in ("pass", "skipped") or st.get(StageId.VOICE_VAL).state == "dropped":
             continue
-        if is_fresh(s[StageId.VOICE], run_dir, mid, cfg) and is_fresh(s[StageId.VOICE_VAL], run_dir, mid, cfg):
+        if is_fresh(s[StageId.VOICE], run_dir, mid, cfg) and (not cfg.enabled(StageId.VOICE_VAL)
+                                                               or is_fresh(s[StageId.VOICE_VAL], run_dir, mid, cfg)):
             continue
         out.append(mid)
     return out

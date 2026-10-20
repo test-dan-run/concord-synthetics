@@ -72,11 +72,16 @@ def acoustic_summary(r: AcousticRender) -> dict[str, Scalar]:
 def build_entry(paths: MeetingPaths, cfg: RunConfig, *, aligner: str) -> ManifestEntry:
     m = read_model(paths.meeting, MeetingSpec)
     script = read_model(paths.script, Script)
-    sv = read_model(paths.script_validation, ScriptValidation) if paths.script_validation.is_file() else None
+    # stages 3, 5 and 7 can be switched off (ablations): then their files are left out, even if an earlier run of
+    # the same meeting wrote them
+    def optional[M](stage: StageId, path: Path, cls: type[M]) -> M | None:
+        return read_model(path, cls) if cfg.enabled(stage) and path.is_file() else None
+
+    sv = optional(StageId.SCRIPT_VAL, paths.script_validation, ScriptValidation)
     syn = read_model(paths.synthesis, Synthesis)
-    vv = read_model(paths.voice_validation, VoiceValidation) if paths.voice_validation.is_file() else None
+    vv = optional(StageId.VOICE_VAL, paths.voice_validation, VoiceValidation)
     tl = read_model(paths.timeline, Timeline)
-    render = read_model(paths.render, AcousticRender)
+    render = optional(StageId.ACOUSTIC, paths.render, AcousticRender)
     tr = read_model(paths.transcript, Transcript)
 
     speech = {p.speaker_id: 0.0 for p in m.people}
@@ -121,10 +126,11 @@ def build_entry(paths: MeetingPaths, cfg: RunConfig, *, aligner: str) -> Manifes
 
     rel = paths.dir.relative_to(paths.run_dir)
     files = {"meeting": "meeting.json", "script": "script.json", "timeline": "timeline.json", "tracks": "tracks",
-             "mixture": "mixture.wav", "rttm": "labels/meeting.rttm", "transcript": "labels/transcript.json",
-             "render": "render.json"}
-    if "mixture_mc" in render.files:
-        files["mixture_mc"] = "mixture_mc.wav"
+             "rttm": "labels/meeting.rttm", "transcript": "labels/transcript.json"}
+    if render is not None:
+        files.update({"mixture": "mixture.wav", "render": "render.json"})
+        if "mixture_mc" in render.files:
+            files["mixture_mc"] = "mixture_mc.wav"
     from ..stages.runner import meeting_seed
 
     return ManifestEntry(run_id=cfg.run_id, meeting_id=m.meeting_id, seed=meeting_seed(cfg.seed, m.meeting_id),
@@ -134,7 +140,7 @@ def build_entry(paths: MeetingPaths, cfg: RunConfig, *, aligner: str) -> Manifes
                          position_counts={k: m.count(k) for k in ("table", "wall", "presenter", "remote")},
                          speakers=speakers, judge=judge, voice=voice, turn_taking=tl.stats,
                          files={k: str(rel / v) for k, v in files.items()},
-                         acoustic=acoustic_summary(render), labels=labels)
+                         acoustic=acoustic_summary(render) if render is not None else {}, labels=labels)
 
 
 def write_run_manifest(run_dir: Path) -> Path:

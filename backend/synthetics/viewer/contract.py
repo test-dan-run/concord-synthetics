@@ -262,11 +262,12 @@ def check_meeting(rows: _Rows, paths: MeetingPaths, cfg: RunConfig, splits: Spea
                 s.get("mic.type") in ("laptop", "centre") and s.get("table.shape") in TABLE_SHAPES,
                 f"mic.type {s.get('mic.type')!r}, table.shape {s.get('table.shape')!r}")
     rows.expect(a, "hybrid", mid, s.get("dynamics.hybrid") is (counts["remote"] > 0), f"{s.get('dynamics.hybrid')!r}")
+    rendered = entry.stages_enabled.get("acoustic", True)  # an ablation without stage 7 measures nothing
     rows.expect(a, "RT60: sampled and measured", mid,
                 _num(s.get("acoustics.rt60")) and _num(s.get("room.rt60_target"))
-                and _num(entry.acoustic.get("rt60_measured")), "missing")
+                and (not rendered or _num(entry.acoustic.get("rt60_measured"))), "missing")
     rows.expect(a, "SNR: sampled and measured", mid,
-                _num(s.get("acoustics.snr_db")) and _num(entry.acoustic.get("snr_db")), "missing")
+                _num(s.get("acoustics.snr_db")) and (not rendered or _num(entry.acoustic.get("snr_db"))), "missing")
     rows.expect(a, "fit resample count", mid, s.get("fit_resamples") == m.fit_resamples, "differs from meeting.json")
     tt = entry.turn_taking
     rows.expect(a, "turn-taking: overlap share, backchannels per minute, interruption share", mid,
