@@ -1,17 +1,16 @@
-# Handoff: where things stand (Oct 20, 2026, early morning)
+# Handoff: where things stand (Oct 21, 2026)
 
-This covers the overnight work of Oct 19–20: the M5 exit run, the stage 5, 7 and 8 fixes it led to, and the start
-of the M9 run. Read it with `docs/M5_EXIT.md` (the M5 results and every fix), `docs/VOICE_BAKEOFF.md` (the voice
+This covers Oct 19–21: the M5 exit run, the stage 5, 7 and 8 fixes it led to, and the M9 run. Read it with `docs/M5_EXIT.md` (the M5 results and every fix), `docs/VOICE_BAKEOFF.md` (the voice
 model measurements) and `IMPLEMENTATION_PLAN.md` §5 (M5 to M11).
 
 ## State
 
-- **Code:** branch `phase-c-qwen-only`, worked on in the `apps/Synthetics-voice` worktree. It starts from `main`
-  (`1c070b6`) and is **not merged yet**. All tests pass (206, plus the strict xfail for the acoustics cache).
+- **Code:** `main`, with branch `phase-c-qwen-only` merged on Oct 21. All tests pass (206, plus the strict xfail
+  for the acoustics cache). The `apps/Synthetics-voice` and `apps/Synthetics-post` worktrees are fully merged.
 - **Runs** (all in `apps/Synthetics/runs`):
   - `m3-10`: the M3 record, untouched.
   - `m5-exit`: a copy of `m3-10` with current settings; stages 4 to 8 done on all 10 meetings.
-  - `m9-e2e`: the M9 run, 20 meetings, seed 9. Started at 03:23 on Oct 20 from this worktree's code.
+  - `m9-e2e`: the M9 run, 20 meetings, seed 9. Finished at 00:26 on Oct 21, after a pause and a resume.
 - **Platform:** `/home/user/code/dev/platform` has no git, so its changes exist only on disk (listed below).
 
 ## Milestones
@@ -21,7 +20,7 @@ model measurements) and `IMPLEMENTATION_PLAN.md` §5 (M5 to M11).
 | M4 bake-off | **Done** (`docs/VOICE_BAKEOFF.md`) |
 | M5 stages 4 and 5 | **Done.** Exit met on Oct 20: all 10 M3 meetings pass phase C (`docs/M5_EXIT.md`) |
 | M6, M7, M8 | Done, and now checked on real audio: all 10 `m5-exit` meetings pass stages 6 to 8 |
-| M9 | **Running** (`m9-e2e`). Code added: `coverage-seed`, `run_report.json`, `synthetics report` |
+| M9 | **Done.** Exit accepted on Oct 21 with 19 of 20 meetings through stage 8 (see below) |
 
 ## Decisions taken on Oct 19–20
 
@@ -35,14 +34,29 @@ model measurements) and `IMPLEMENTATION_PLAN.md` §5 (M5 to M11).
 - **Stage 8:** aligned times clamped to the clip for clips under 1 s.
 - **M9 coverage by seed:** `synthetics coverage-seed` picked seed 9, whose 20 meetings cover every item on the
   plan's coverage list. The sampler's distributions are unchanged.
+- **M9 exit at 19 of 20** (Oct 21). `m-000020` failed stage 7 (RT60), and that is accepted for now.
+- **Kept-flagged utterances stay** (Oct 21): M9 kept 1.3% of utterances flagged, mostly "(mm) X." backchannels and
+  names in short sentences. They stay in the data, listed in each meeting's `kept_failed`.
+
+## M9 result
+
+`runs/m9-e2e/run_report.json` and `voice_report.json`:
+
+| | Value |
+|---|---|
+| Meetings through stage 8 (in `manifest.jsonl`) | 19 of 20 |
+| Speakers disjoint across splits | Yes |
+| Coverage list, on the 19 | Met |
+| Stage 5 | 20 of 20 pass; 95.2% of 7,172 utterances first time; 96 (1.3%) kept flagged; 4 clip swaps, 0 speaker swaps |
+| Scripts | 20 of 20 passed, none dropped; 4 needed rewrites; the Apertus tie-breaker decided every pass |
+| Time | Scripts 2 h 51 min; phase C 3 h 21 min after the resume, about 5 h 10 min in all; stages 6 to 8 about 20 min |
 
 ## Next steps
 
-1. **Watch M9.** `synthetics status -r m9-e2e --meetings` for progress. If it stops, `synthetics resume -r m9-e2e`
-   picks it up; finished stages are cache hits. When it finishes, `synthetics report -r m9-e2e` and
-   `synthetics voice-report -r m9-e2e --min-meetings 1`.
-2. **Merge `phase-c-qwen-only` into `main`** once the M9 run is judged.
-3. **M10:** run statistics for the viewer (plan §M10).
+1. **M10:** run statistics for the viewer (plan §M10).
+2. **RT60 noise in stage 7** (`m-000020`): calibration and the check measured the same 6 talker poses at 0.667 s
+   and 0.78 s, so the ray-traced late part makes the estimate noisy (0.58–0.99 s across talkers in one room). Check
+   on the calibration's own impulse responses, or make the estimate steadier.
 
 ## Platform changes on disk (no git)
 
@@ -103,6 +117,9 @@ in the root `README.md`, and `just render`.
   leniently.
 - **From M5** (`docs/M5_EXIT.md`): particles in TTS input ("(hor)" → "haw"), cut-off turns losing their last
   word, and short-turn speakers having no consistency check.
+- **From M9:** "(mm) X." backchannels go to the TTS as `mm good.`, the hum fuses into the next word, and the ASR
+  hears another word. Short sentences with a Singaporean name fail WER because the ASR gets the name wrong; the
+  lexicon's `#name#` marker could take names out of the score but is unused. Both are kept flagged, by decision.
 
 ## Licences to carry into the dataset card
 
