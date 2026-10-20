@@ -82,3 +82,11 @@ bakeoff *flags:
     {{cli}} bakeoff {{flags}}
 calibrate-sv *flags:
     {{cli}} calibrate-sv {{flags}}
+
+# M10: check a run against the viewer's data contract
+viewer-contract run_id:
+    {{cli}} viewer-contract -r {{run_id}}
+
+# the Room Config Viewer: API (and frontend/dist when built) on http://127.0.0.1:8610
+viewer *flags:
+    {{cli}} viewer {{flags}}

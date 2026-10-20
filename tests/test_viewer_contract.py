@@ -10,24 +10,11 @@ import pytest
 from typer.testing import CliRunner
 
 from conftest import ROOT
-from helpers import fake_run
 from synthetics.artifacts.io import read_model, write_model
 from synthetics.artifacts.meeting import MeetingSpec
 from synthetics.artifacts.paths import RunPaths
-from synthetics.config.schema import StageId
 from synthetics.orchestrator.cli import app
-from synthetics.orchestrator.lease import GpuLease
-from synthetics.orchestrator.scheduler import PhaseScheduler
 from synthetics.viewer.contract import check_run
-
-ALWAYS = {"dist": "bernoulli", "p": 1.0}
-# large hybrid rooms with presenters and wall seats by choice, so every position type and its row is exercised
-COVERAGE = {"simulation.noise_library": None,
-            "room_classes.ratio": {"dist": "categorical", "weights": {"small": 0.0, "large": 1.0}},
-            "room_classes.classes.large.speakers": {"dist": "int_uniform", "lo": 7, "hi": 9},
-            "acoustics.hybrid": {"small": ALWAYS, "large": ALWAYS},
-            "seating.presenters.presentation": {"small": ALWAYS, "large": ALWAYS},
-            "seating.wall.by_choice": ALWAYS}
 
 # every row the viewer depends on; a row that is never checked would pass vacuously
 EXPECTED = {
@@ -59,17 +46,8 @@ EXPECTED = {
 
 
 @pytest.fixture(scope="module")
-def run_dir(tmp_path_factory):
-    from voice_helpers import fake_refs
-
-    tmp = tmp_path_factory.mktemp("contract")
-    mp = pytest.MonkeyPatch()
-    mp.setenv("NSC_REFS_DIR", str(fake_refs(tmp / "refs")))
-    mp.setenv("SOUND_LIBRARY_DIR", str(tmp / "no-library"))
-    rd, cfg = fake_run(tmp / "run", n=2, seed=21, **COVERAGE)
-    PhaseScheduler(rd, cfg, lease_factory=lambda s, **kw: GpuLease(s, **{**kw, "enabled": False})).run(until=StageId.LABELS)
-    mp.undo()
-    return rd
+def run_dir(viewer_run):
+    return viewer_run
 
 
 def test_every_contract_row_holds_on_a_fake_run(run_dir):

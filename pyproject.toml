@@ -16,6 +16,8 @@ dependencies = [
     "aicore[oip]",
     "scipy>=1.18.1",
     "pyroomacoustics>=0.10.1",
+    "fastapi>=0.120",
+    "uvicorn[standard]>=0.38",
 ]
 
 [project.scripts]

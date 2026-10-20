@@ -415,3 +415,14 @@ def nsc_report(out_dir: Annotated[Path | None, typer.Option()] = None,
 
 if __name__ == "__main__":
     app()
+
+
+@app.command()
+def viewer(host: Annotated[str, typer.Option()] = "127.0.0.1",
+           port: Annotated[int, typer.Option(envvar="SYNTHETICS_PORT")] = 8610,
+           reload: Annotated[bool, typer.Option(help="reload on backend changes")] = False):
+    """The Room Config Viewer: the read-only API over SYNTHETICS_RUNS, and the built frontend (frontend/dist)."""
+    import uvicorn
+
+    uvicorn.run("synthetics.viewer.api:app", factory=True, host=host, port=port, reload=reload,
+                reload_dirs=["backend"] if reload else None)
