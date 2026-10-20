@@ -82,7 +82,7 @@ Turn-taking (stages 1 and 6):
 | --- | --- |
 | Turn shares | Zipf distribution, exponent 1.0; the chair takes the top share |
 | Gap between turns | 70% of transitions: log-normal gap, median 0.3 s, capped at 2 s |
-| Overlapping transitions | 30% of transitions: next turn starts 0.1–1.0 s before the previous ends, at most half its length |
+| Overlapping transitions | 50% of transitions: next turn starts 0.3–2.0 s before the previous ends, at most half its length (was 30% and 0.1–1.0 s until Oct 21, 2026; stage 6 then had to triple most leads to reach the overlap target) |
 | Overall overlap target | 10–20% of speech time (small rooms), 15–25% (large rooms) |
 | Interruptions | 5–10% of turn changes; interrupted speaker cut off 0.3–1.5 s after the interruption starts |
 | Backchannels | 1–3 per minute, from non-speakers, placed inside the current turn |

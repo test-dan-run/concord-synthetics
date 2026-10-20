@@ -209,8 +209,9 @@ Stage 7 also fails a meeting when the measured RT60 is off target, as described 
   from ESC-50, which is licensed CC BY-NC 3.0 as a whole (non-commercial use only), with each clip's Freesound
   source and original licence in the index. Every clip passed a check for pitched, speech-like frames, so the noise
   holds no unlabelled speech.
-- With the default turn-taking settings (30% of transitions overlapping by 0.1 to 1.0 s), the realised overlap is
-  about 5 to 8% of speech time, which is under the 10 to 25% target. Stage 6 meets the target by lengthening the
+- The planned overlaps alone fall a little short of the 10 to 25% target. With the default turn-taking settings
+  (since Oct 21, 2026, 50% of transitions overlapping by 0.3 to 2.0 s) they give about 12 to 15% of speech time.
+  Runs made before then used 30% and 0.1 to 1.0 s, which gave 5 to 8%. Stage 6 meets the target by lengthening the
   overlaps (up to three times, and never more than half of either turn) and then by letting more transitions overlap.
   `status.json` records both as stage 6 metrics (`lead_scale`, `converted_transitions`). A meeting with few
   speaker changes (for example two people, one of them presenting) can run out of transitions to overlap; it then

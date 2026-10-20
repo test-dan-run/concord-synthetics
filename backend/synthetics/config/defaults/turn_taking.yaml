@@ -2,8 +2,11 @@
 turn_taking:
   zipf: {dist: zipf, exponent: 1.0}                # the chair takes the top share
   gap: {dist: lognormal, median: 0.3, sigma: 0.6, cap: 2.0}
-  overlap_share: 0.3                               # of transitions; the other 70% use `gap`
-  overlap_lead: {dist: uniform, lo: 0.1, hi: 1.0}
+  # Oct 21, 2026: was 0.3 and 0.1-1.0 s, which realised 5-8% overlap against the 10-25% target, so stage 6
+  # stretched nearly every lead 3 times and turned a quarter of normal transitions into overlaps. With these, over
+  # 120 sampled meetings with real M9 utterance lengths, it stretches 2 times on average and converts 3%.
+  overlap_share: 0.5                               # of transitions; the other half use `gap`
+  overlap_lead: {dist: uniform, lo: 0.3, hi: 2.0}
   overlap_max_frac: 0.5
   overlap_target:
     small: {dist: uniform, lo: 0.10, hi: 0.20}

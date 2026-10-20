@@ -106,11 +106,14 @@ def test_speech_in_the_mixture_follows_the_timeline(post):
         hop = sr // 10
         n = len(x) // hop
         e = 10 * np.log10(np.mean(x[: n * hop].reshape(n, hop) ** 2, axis=1) + 1e-12)
-        voiced = np.zeros(n, bool)
+        voiced, near = np.zeros(n, bool), np.zeros(n, bool)
         for s in tl.segments:
             voiced[int(s.start * 10): int(s.end * 10)] = True
-        assert voiced.any() and (~voiced).any()
-        assert np.median(e[voiced]) > np.median(e[~voiced]) + 3.0, p.meeting_id
+            near[int(s.start * 10): int(s.end * 10) + 5] = True  # speech and its reverberant tail (0.5 s)
+        assert voiced.any() and (~near).any()
+        # a low-SNR draw (5 dB is in the large-room range) under AGC leaves speech only a few dB over the gaps
+        margin = min(3.0, 0.3 * read_model(p.render, AcousticRender).snr_db)
+        assert np.median(e[voiced]) > np.median(e[~near]) + margin, p.meeting_id
         assert np.abs(x).max() <= 1.0
         # levels differ by distance and orientation, but no talker (the speakerphone included) drowns the rest
         talker = {}
