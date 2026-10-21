@@ -420,9 +420,16 @@ if __name__ == "__main__":
 @app.command()
 def viewer(host: Annotated[str, typer.Option()] = "127.0.0.1",
            port: Annotated[int, typer.Option(envvar="SYNTHETICS_PORT")] = 8610,
-           reload: Annotated[bool, typer.Option(help="reload on backend changes")] = False):
-    """The Room Config Viewer: the read-only API over SYNTHETICS_RUNS, and the built frontend (frontend/dist)."""
+           reload: Annotated[bool, typer.Option(help="reload on backend changes")] = False,
+           read_only: Annotated[bool, typer.Option("--read-only", envvar="SYNTHETICS_READ_ONLY",
+                                                   help="leave out the run builder (create, start, stop)")] = False):
+    """The Room Config Viewer: the API over SYNTHETICS_RUNS, the run builder, and the built frontend (frontend/dist)."""
+    import os
+
     import uvicorn
+
+    if read_only:
+        os.environ["SYNTHETICS_READ_ONLY"] = "1"  # read by the app factory, also in reload workers
 
     uvicorn.run("synthetics.viewer.api:app", factory=True, host=host, port=port, reload=reload,
                 reload_dirs=["backend"] if reload else None)

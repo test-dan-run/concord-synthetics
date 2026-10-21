@@ -41,8 +41,10 @@ backends.
 
 ## Room Config Viewer
 
-A read-only web UI over `runs/` (`UI_DESIGN_DOCUMENT.md`): a meeting browser, each meeting's floor plan,
-elevation, persona prompts and speakers, and the run's sampled distributions against `config.yaml`.
+A web UI over `runs/` (`UI_DESIGN_DOCUMENT.md`): a meeting browser, each meeting's floor plan,
+elevation, persona prompts and speakers, and the run's sampled distributions against `config.yaml`. Under
+Generate, New dataset creates a run from a form with a live stage 1 preview, and Pipeline starts, stops and
+follows it in the background. `synthetics viewer --read-only` (or `SYNTHETICS_READ_ONLY=1`) leaves those out.
 
 ```bash
 just viewer-setup               # npm install in frontend/ (once)

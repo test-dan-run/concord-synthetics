@@ -1,35 +1,56 @@
 // Fetch wrapper, React Query hooks and the shapes of the files the viewer reads. The backend's Pydantic models
 // (backend/synthetics/artifacts/*.py) and viewer/api.py are the source of truth for every field name.
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RoomClass } from "./colors";
+
+/** One problem with a field: `loc` is the dotted config path (or "yaml", "run_id", "confirm"). */
+export interface FieldError {
+  loc: string;
+  msg: string;
+}
 
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
     public path: string,
+    public errors: FieldError[] = [],
   ) {
     super(message);
   }
 }
 
-async function get<T>(path: string, as: "json" | "text" = "json"): Promise<T> {
-  const r = await fetch(`/api${path}`);
+async function request<T>(path: string, init?: RequestInit, as: "json" | "text" = "json"): Promise<T> {
+  const r = await fetch(`/api${path}`, init);
   if (!r.ok) {
     let msg = r.statusText;
+    let errors: FieldError[] = [];
     try {
       const j = await r.json();
-      msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail ?? j);
+      const d = j.detail ?? j;
+      if (typeof d === "string") msg = d;
+      else if (d && typeof d.message === "string") {
+        msg = d.message;
+        errors = Array.isArray(d.errors) ? d.errors : [];
+      } else msg = JSON.stringify(d);
     } catch {
       /* not JSON */
     }
-    throw new ApiError(r.status, msg, `/api${path}`);
+    throw new ApiError(r.status, msg, `/api${path}`, errors);
   }
   return (as === "text" ? await r.text() : await r.json()) as T;
 }
 
-export const api = { get };
+async function get<T>(path: string, as: "json" | "text" = "json"): Promise<T> {
+  return request<T>(path, undefined, as);
+}
+
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+}
+
+export const api = { get, post };
 
 // ---------------------------------------------------------------- shapes
 
@@ -172,6 +193,87 @@ export interface Jobs {
   running_stages: string[];
   active: boolean;
   last_update: string | null;
+  process: ProcessState;
+}
+
+// ---------------------------------------------------------------- run builder (viewer/builder.py)
+
+export type ProcessState = "idle" | "running" | "finished" | "failed" | "stopped" | "lost";
+
+export interface RunProcess {
+  state: ProcessState;
+  pid?: number;
+  live?: boolean;
+  started_at?: string;
+  ended_at?: string | null;
+  exit_code?: number | null;
+  error?: string | null;
+}
+
+export interface ProcessInfo {
+  run: string;
+  process: RunProcess;
+  log: string;
+  live: boolean;
+  gpu_services: Record<string, string[]>;
+}
+
+/** What the form sends: the run fields, dotted overrides, and a YAML overlay (viewer/builder.py Draft). */
+export interface Draft {
+  run_id: string;
+  n_meetings: number;
+  seed: number;
+  overrides: Record<string, unknown>;
+  yaml: string;
+}
+
+export interface PreviewMeeting {
+  meeting_id: string;
+  room_class: RoomClass;
+  n_speakers: number;
+  split: Split;
+  rt60: number;
+  snr_db: number;
+  hybrid: boolean;
+  presentation: boolean;
+  duration_min: number;
+  table_shape: string;
+  mic_type: string;
+  fit_resamples: number;
+  positions: Record<PositionType, number>;
+}
+
+export interface SamplerCheck {
+  name: string;
+  target: number | string;
+  observed: number | string;
+  tolerance: number | null;
+  n: number;
+  ok: boolean;
+  note: string;
+}
+
+export interface Preview {
+  config_hash: string;
+  revision: number;
+  n_meetings: number;
+  n_sampled: number;
+  overrides: string[];
+  meetings: PreviewMeeting[];
+  plans: (Plan & { meeting_id: string })[];
+  checks: SamplerCheck[];
+  failures: { meeting_id: string; error: string }[];
+  live: boolean;
+  gpu_services: Record<string, string[]>;
+  stages_enabled: Record<string, boolean>;
+  audio_hours: number;
+  estimate_hours: number | null;
+}
+
+export interface Defaults {
+  config: Record<string, unknown>;
+  preview_max: number;
+  reserved: string[];
 }
 
 export interface Persona {
@@ -355,4 +457,51 @@ export function exportUrl(run: string, params: Record<string, string | number | 
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "" && v !== false) q.set(k, String(v));
   return `/api/runs/${enc(run)}/export${q.size ? `?${q}` : ""}`;
+}
+
+export const useViewer = () =>
+  useQuery({ queryKey: ["viewer"], queryFn: () => get<{ read_only: boolean; runs_root: string }>("/viewer"), staleTime: Infinity });
+
+export const useDefaults = (enabled = true) =>
+  useQuery({ queryKey: ["defaults"], queryFn: () => get<Defaults>("/defaults"), staleTime: Infinity, enabled });
+
+/** Stage 1 in memory for a draft. `draft` should be debounced by the caller; `null` waits. */
+export const usePreview = (draft: Draft | null) =>
+  useQuery({
+    queryKey: ["preview", draft],
+    queryFn: () => post<Preview>("/preview", draft),
+    enabled: !!draft,
+    placeholderData: keepPreviousData,
+    retry: false,
+    staleTime: Infinity,
+  });
+
+export const useProcess = (run: string) =>
+  useQuery({
+    queryKey: ["process", run],
+    queryFn: () => get<ProcessInfo>(`/runs/${enc(run)}/process`),
+    enabled: !!run,
+    refetchInterval: (q) => (q.state.data?.process.state === "running" ? 3000 : 15000),
+  });
+
+export function useCreateRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (draft: Draft) => post<{ id: string; config_hash: string; live: boolean }>("/runs", draft),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["runs"] }),
+  });
+}
+
+/** Start or stop a run's background process; every view of the run refreshes afterwards. */
+export function useRunAction(run: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, confirm }: { action: "start" | "stop"; confirm?: boolean }) =>
+      post<ProcessInfo>(`/runs/${enc(run)}/${action}`, action === "start" ? { confirm: !!confirm } : undefined),
+    onSuccess: (info) => {
+      qc.setQueryData(["process", run], info);
+      qc.invalidateQueries({ queryKey: ["jobs", run] });
+      qc.invalidateQueries({ queryKey: ["meetings", run] });
+    },
+  });
 }

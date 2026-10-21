@@ -9,7 +9,8 @@ The Room Config Viewer is the Room viewer section of the Synthetics product: a w
 Two product decisions shape everything below:
 
 - **Part of Synthetics, outside Concord.** The viewer ships in the Synthetics app under its own name and icon, built on the AeroAudio design system so it looks and behaves like the other workspace tools.
-- **Read-only.** The viewer reads pipeline artifacts from `runs/<run_id>/` and never writes back. It has no resample, regenerate or edit actions; its one action is exporting a manifest slice.
+- **Read-only room viewer.** The room viewer reads pipeline artifacts from `runs/<run_id>/` and never writes back. It has no resample, regenerate or edit actions; its one action is exporting a manifest slice.
+- **A separate run builder (added Oct 21, 2026, M14).** Creating and running a dataset lives in its own sidebar group, Generate, so the room viewer's screens stay read-only. The builder only creates new runs and starts or stops them; it never edits a frozen config or a stage's output. `synthetics viewer --read-only` leaves it out.
 
 Goals:
 
@@ -17,7 +18,7 @@ Goals:
 - Make sampler drift visible: room-class mix, presentation and wall-seating rates, hybrid rate, acoustics, mic distances and turn-taking, each against `config.yaml`.
 - Show each persona's saved prompt beside the script turns it produced, so script quality problems trace back to the prompt.
 
-Out of scope: editing configs, triggering generation, audio playback, label review, and anything the fine-tuning application owns (training, evaluation).
+Out of scope: editing an existing run's config, re-running single stages or meetings, audio playback, label review, and anything the fine-tuning application owns (training, evaluation).
 
 ## Users and key tasks
 
@@ -39,7 +40,7 @@ The viewer has three screens inside the AeroAudio app shell of Synthetics: a sid
 
 &#91;embedded content: screens and navigation · 3 screens\]
 
-The sidebar links to Meetings and Distributions and holds the active-run select plus a jobs card for any batch in progress. Changing the run reloads every screen for that run. Meeting cards open the detail screen; crumbs lead back, and Previous and Next step through meetings in the browser's current filter and sort order.
+The sidebar links to Meetings and Distributions, then under Generate to New dataset and Pipeline (screens 4 and 5, left out in read-only mode), and holds the active-run select plus a jobs card for any batch in progress. Changing the run reloads every screen for that run. Meeting cards open the detail screen; crumbs lead back, and Previous and Next step through meetings in the browser's current filter and sort order.
 
 ## Screen 1: Meeting browser
 
@@ -143,6 +144,20 @@ This screen answers one question: did the run produce what `config.yaml` asked f
 
 Charts sit under three group headings: Rooms and acoustics (stages 1 and 7), Positions (stage 1) and Turn-taking (stage 6). Per-class charts are small multiples on the same axis range, so the two classes compare directly; all-meeting charts use `color-primary` as the single series. Each chart has a one-line note under it. Hovering a bar dims its neighbours and shows a tooltip with the bin range and count.
 
+## Screen 4: New dataset (run builder)
+
+Added Oct 21, 2026 (M14). One page at `/new`: a form on the left and a sticky preview on the right, stacked below `xl`.
+
+1. **Run.** Start from the defaults or from an existing run, run id (suggested as `d-<date>`, checked against the runs on disk), meetings, seed, and backends (real models on the GPU, or fake with no GPU). Starting from a run copies its frozen config: the form fields fill in, and every other setting that differs from the defaults becomes a line of the YAML overlay. The new run always takes the current revision.
+2. **Curated settings,** grouped as rooms and speakers, turn-taking, seating and participants, acoustics and device, splits, and stage switches (3, 5 and 7). Ranges are two numbers, probabilities a slider with a number in %, weights one number per category with its normalised share. A field that differs from the default says "changed".
+3. **YAML overlay** for any other setting, as in a `--config` file; dotted keys work too, and the overlay wins over the form.
+4. **Preview.** Stage 1 runs on the server in memory for the draft, a short pause after each change, so it shows the meetings the run will sample (up to the first 500): class and split counts, audio hours, hybrid, presentation and wall seat shares, mini plans of the first six meetings, histograms of speakers, length, RT60 and SNR, the sampler checks, and any meeting that cannot be sampled. Validation errors from the backend appear under their field.
+5. **Create.** Says whether the run will lease GPU services and, for real backends, a rough time scaled from `m9-e2e`. Creating writes the frozen config and goes to the Pipeline screen; it does not start the run.
+
+## Screen 5: Pipeline
+
+`/runs/<run>/pipeline`. Start (or Resume once any stage has run) and Stop in the header, a Process panel (state, start and end, exit code, error), a Stages table (meetings per state for each stage, from `status.json`), and the tail of `process.log`, refreshed every 3 seconds while running. Starting a run on real backends opens a dialog listing the services each GPU phase leases. Stop sends an interrupt, as Ctrl-C would, so the lease releases its services, and Resume continues from the status files. Only one run can run at a time.
+
 ## Visual design
 
 The viewer uses AeroAudio throughout: dark slate only, Inter for text, JetBrains Mono with tabular figures for every number, ID and unit, flat surfaces with 1 px borders, and the standard Sidebar, PageHeader, Panel, MetricTile, Toggle, Chip, Tag, Fact and SortableTable components. It adds two things to the system: a categorical palette and the Synthetics icon, both below.
@@ -211,6 +226,7 @@ The viewer reads the pipeline's storage layout directly and computes everything 
 | `timeline.json` | Detail persona panel | Turn start times when the script has none |
 | `speaker_splits.json` | Detail | NSC reference speaker per persona |
 | `prompts/<speaker_id>.txt` | Detail persona panel | The rendered persona prompt stage 2 sent for each speaker, shown verbatim |
+| `process.json`, `process.log` | Pipeline, jobs card | State of a run started from the viewer, and its log (M14) |
 
 Computed in the UI: mouth-to-mic distance in 3D, facing angle relative to the table centre, table edge per person, room volume, histogram bins, and `text_norm` when it is not already stored.
 

@@ -120,14 +120,21 @@ The design commits to the following, and code changes should keep them.
 
 ## The Room Config Viewer
 
-The viewer is a read-only web UI over `runs/`, for the pipeline team and the fine-tuning team. It has three
+The viewer is a web UI over `runs/`, for the pipeline team and the fine-tuning team. Its room viewer has three
 screens: a meeting browser with a mini floor plan per meeting, a meeting detail screen (floor plan and side
 elevation to scale, pipeline status, the selected speaker's facts, the persona prompt beside the turns it
-produced, and a speakers table), and the run's sampled distributions against the configured ranges.
+produced, and a speakers table), and the run's sampled distributions against the configured ranges. Its run
+builder (M14) has two more: New dataset, a form over the common settings plus a YAML overlay
+with a live stage 1 preview, and Pipeline, which starts, stops and follows a run.
 
-- It never writes to a run. Its only action is exporting a slice of the manifest.
-- The API (`backend/synthetics/viewer/api.py`) only lists runs and serves whitelisted files. Every derived number
-  (3D mic distances, facing, histogram bins) is computed in the browser.
+- The room viewer never writes to a run. Its only action is exporting a slice of the manifest.
+- The run builder writes only what `init-run` writes (the frozen config, splits and meeting folders) and starts
+  the same `run` as the CLI in a background process, which records itself in `process.json` and `process.log`. It
+  never edits a frozen config. One run at a time, and a run on real backends asks for confirmation first.
+  `synthetics viewer --read-only` leaves the builder out.
+- The API (`backend/synthetics/viewer/api.py`) lists runs and serves whitelisted files; the builder's routes are
+  in `viewer/builder.py`. Every derived number (3D mic distances, facing, histogram bins) is computed in the
+  browser.
 - The UI (`frontend/`) is React, Vite and Tailwind on the AeroAudio design system
   (`/home/user/code/dev/DESIGN_SYSTEM.md`). Room classes use the categorical colours `cat-1` and `cat-2`, and
   speakers are never coloured, because meetings reach 20 speakers. Position types differ by shape.
@@ -149,9 +156,9 @@ apps/Synthetics/
     text/               Singlish convention, numbers, PDPA stripping
     nsc/                voice pool, reference extraction and cleanup, non-lexical clips
     voice/              audio operations and the non-lexical sound library
-    orchestrator/       CLI, scheduler, GPU lease, phase C and post loops, status, run report
+    orchestrator/       CLI, scheduler, GPU lease, phase C and post loops, status, run report, background runs
     export/             RTTM, transcript and manifest writers
-    viewer/             data contract check and read-only API
+    viewer/             data contract check, the API, and the run builder's routes
   frontend/             the viewer UI
   data/                 the pinned NSC pool CSV and the scripts that rebuild it
   assets/               icon and UI mock-ups

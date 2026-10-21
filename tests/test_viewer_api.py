@@ -92,9 +92,12 @@ def test_artifacts_are_whitelisted(client):
     assert client.get("/api/runs/..%2Ft/manifest").status_code == 404
 
 
-def test_no_write_routes(client):
+def test_no_write_routes_on_run_files(client):
+    # the run builder (test_viewer_builder.py) creates runs with POST /api/runs; nothing writes a run's files
     for path in ("/api/runs", "/api/runs/t/manifest", "/api/runs/t/meetings/m-000001/meeting.json"):
         for method in ("post", "put", "patch", "delete"):
+            if (method, path) == ("post", "/api/runs"):
+                continue
             assert getattr(client, method)(path).status_code == 405, (method, path)
 
 

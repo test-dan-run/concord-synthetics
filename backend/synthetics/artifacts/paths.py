@@ -2,6 +2,7 @@
 
     runs/<run_id>/
       config.yaml, speaker_splits.json, manifest.jsonl
+      process.json, process.log          (runs started from the viewer)
       meetings/<meeting_id>/
         meeting.json, script.json, prompts/<speaker_id>.txt, script_validation.json, status.json, ...
 """
@@ -27,6 +28,14 @@ class RunPaths:
     @property
     def manifest(self) -> Path:
         return self.run_dir / "manifest.jsonl"
+
+    @property
+    def process(self) -> Path:
+        return self.run_dir / "process.json"
+
+    @property
+    def process_log(self) -> Path:
+        return self.run_dir / "process.log"
 
     @property
     def meetings_dir(self) -> Path:
