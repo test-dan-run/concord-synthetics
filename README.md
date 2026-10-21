@@ -1,6 +1,7 @@
 # Synthetics
 
-Synthetic Singapore meeting audio with full labels. See `DESIGN_DOCUMENT.md` for the pipeline and
+Synthetic Singapore meeting audio with full labels. Start with `AGENTS.md` for the purpose and design in short
+form. See `DESIGN_DOCUMENT.md` for the pipeline and
 `IMPLEMENTATION_PLAN.md` for the build plan, `docs/OUTPUT_CONTRACT.md` for the files a run hands over, and
 `docs/HANDOFF.md` for the current state. Built: milestones M0 to M13, that is all eight stages, end-to-end
 orchestration, and the Room Config Viewer (read-only API plus web UI).
