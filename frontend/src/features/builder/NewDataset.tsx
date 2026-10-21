@@ -4,10 +4,10 @@
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, cx, Empty, ErrorNote, PageHeader, Panel, Select, Spinner, Toggle } from "../../components/ui";
+import { Button, cx, Empty, ErrorNote, InfoTip, PageHeader, Panel, Select, Spinner, Toggle } from "../../components/ui";
 import { api, ApiError, type Draft, type FieldError, useCreateRun, useDefaults, usePreview, useRuns, useViewer } from "../../lib/api";
-import { fieldOf, fromRun, getPath, MODE_PATH, overridesOf, RUN_ID, SECTIONS, suggestRunId, type Values, valuesFrom } from "../../lib/draft";
-import { FieldInput, NumInput } from "./FieldInput";
+import { fieldOf, fromRun, getPath, type Info, MODE_PATH, overridesOf, RUN_ID, RUN_INFO, SECTIONS, suggestRunId, type Values, valuesFrom } from "../../lib/draft";
+import { FieldInput, InfoText, NumInput, RowLabel } from "./FieldInput";
 import { PreviewBody } from "./PreviewPanel";
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -24,13 +24,10 @@ const MODES = [
   { value: "fake", label: "Fake (no GPU)" },
 ];
 
-function Row({ label, hint, htmlFor, children, error }: { label: string; hint?: string; htmlFor?: string; children: ReactNode; error?: string }) {
+function Row({ label, hint, htmlFor, info, children, error }: { label: string; hint?: string; htmlFor?: string; info: Info; children: ReactNode; error?: string }) {
   return (
     <div className="grid gap-x-4 gap-y-1.5 py-2.5 border-b border-track last:border-0 sm:grid-cols-[minmax(0,240px)_1fr] items-center">
-      <label htmlFor={htmlFor} className="flex flex-col gap-0.5 text-[13px]">
-        {label}
-        {hint && <span className="text-[11px] text-muted">{hint}</span>}
-      </label>
+      <RowLabel htmlFor={htmlFor} label={label} hint={hint} info={info} />
       <div className="flex flex-col gap-1 min-w-0">
         {children}
         {error && (
@@ -148,7 +145,7 @@ export function NewDataset() {
         <div className="flex flex-col gap-4 min-w-0">
           <Panel title="Run" id="sec-run" subtitle="Each meeting is a function of the seed, its id and the config, so the same settings give the same meetings.">
             <div className="flex flex-col">
-              <Row label="Start from" htmlFor="base">
+              <Row label="Start from" htmlFor="base" info={RUN_INFO.base}>
                 <Select id="base" value={base} onChange={(e) => startFrom(e.target.value)} className="max-w-[260px]">
                   <option value="defaults">The defaults</option>
                   {taken.map((id) => (
@@ -160,7 +157,7 @@ export function NewDataset() {
                 {baseNote && <span className="text-[11px] text-muted">{baseNote}</span>}
                 <ErrorNote error={baseError} />
               </Row>
-              <Row label="Run id" hint="The folder under runs/" htmlFor="run-id" error={idProblem ?? byField.run_id}>
+              <Row label="Run id" hint="The folder under runs/" htmlFor="run-id" info={RUN_INFO.runId} error={idProblem ?? byField.run_id}>
                 <input
                   id="run-id"
                   value={runId}
@@ -169,13 +166,13 @@ export function NewDataset() {
                   className="bg-canvas text-fg border border-line rounded-md min-h-[34px] px-2 text-xs num max-w-[260px]"
                 />
               </Row>
-              <Row label="Meetings" htmlFor="n">
+              <Row label="Meetings" htmlFor="n" info={RUN_INFO.meetings}>
                 <NumInput id="n" value={n} onValue={(v) => setN(Math.max(1, Math.round(v)))} min={1} max={10000} step={1} />
               </Row>
-              <Row label="Seed" htmlFor="seed">
+              <Row label="Seed" htmlFor="seed" info={RUN_INFO.seed}>
                 <NumInput id="seed" value={seed} onValue={(v) => setSeed(Math.max(0, Math.round(v)))} min={0} step={1} />
               </Row>
-              <Row label="Backends" hint={mode === "fake" ? "No GPU: placeholder scripts and audio, to try a config end to end" : "The platform's models; phases A to D lease the GPU"} error={byField[MODE_PATH]}>
+              <Row label="Backends" info={RUN_INFO.backends} hint={mode === "fake" ? "No GPU: placeholder scripts and audio, to try a config end to end" : "The platform's models; phases A to D lease the GPU"} error={byField[MODE_PATH]}>
                 <span className="flex">
                   <Toggle label="Backends" options={modes} value={mode} onChange={(v) => set(MODE_PATH, v)} />
                 </span>
@@ -196,7 +193,14 @@ export function NewDataset() {
           <Panel
             id="sec-yaml"
             title="Advanced: YAML overlay"
-            subtitle="Any other setting, as in a --config file. Nested keys or dotted keys both work, and the overlay wins over the form."
+            subtitle={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                Any other setting, as in a --config file. Nested keys or dotted keys both work, and the overlay wins over the form.
+                <InfoTip label="the YAML overlay">
+                  <InfoText info={RUN_INFO.yaml} />
+                </InfoTip>
+              </span>
+            }
           >
             <textarea
               aria-label="YAML overlay"

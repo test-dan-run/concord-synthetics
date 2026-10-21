@@ -2,10 +2,10 @@
 // a switch. Values are the config's own (shares stay 0-1 and are shown in %); typing never loses a half-typed
 // number, because each input keeps its own text until it parses.
 
-import { useEffect, useId, useState, type InputHTMLAttributes } from "react";
-import { cx } from "../../components/ui";
+import { type InputHTMLAttributes, type ReactNode, useEffect, useId, useState } from "react";
+import { cx, InfoTip } from "../../components/ui";
 import type { Dist } from "../../lib/api";
-import type { Field } from "../../lib/draft";
+import type { Field, Info } from "../../lib/draft";
 
 const round = (v: number) => String(+v.toFixed(6));
 
@@ -42,6 +42,38 @@ export function NumInput({
 
 function Unit({ children }: { children?: string }) {
   return children ? <span className="text-xs text-muted">{children}</span> : null;
+}
+
+/** A setting's hover text: what it is, then why it matters. */
+export function InfoText({ info }: { info: Info }) {
+  return (
+    <span className="flex flex-col gap-1.5">
+      <span>{info.what}</span>
+      <span className="text-muted">
+        <span className="text-fg font-medium">Why it matters. </span>
+        {info.why}
+      </span>
+    </span>
+  );
+}
+
+/** The left column of a form row: the label, an info button beside it (outside the <label>, which may not hold a
+ *  button), and an optional hint. */
+export function RowLabel({ htmlFor, label, info, hint, extra }: { htmlFor?: string; label: string; info?: Info; hint?: string; extra?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5 text-[13px] min-w-0">
+      <span className="flex items-center gap-2">
+        <label htmlFor={htmlFor}>{label}</label>
+        {info && (
+          <InfoTip label={label}>
+            <InfoText info={info} />
+          </InfoTip>
+        )}
+        {extra}
+      </span>
+      {hint && <span className="text-[11px] text-muted">{hint}</span>}
+    </div>
+  );
 }
 
 export function FieldInput({ field, value, onChange, defaultValue, error }: { field: Field; value: unknown; onChange: (v: unknown) => void; defaultValue: unknown; error?: string }) {
@@ -123,13 +155,13 @@ export function FieldInput({ field, value, onChange, defaultValue, error }: { fi
 
   return (
     <div className={cx("grid gap-x-4 gap-y-1.5 py-2.5 border-b border-track last:border-0 sm:grid-cols-[minmax(0,240px)_1fr] items-center", field.kind === "toggle" && "sm:grid-cols-[minmax(0,1fr)_auto]")}>
-      <label htmlFor={id} className="flex flex-col gap-0.5 text-[13px] min-w-0">
-        <span className="flex items-center gap-2">
-          {field.label}
-          {changed && <span className="text-[11px] text-primary" title="Differs from the default">changed</span>}
-        </span>
-        {field.hint && <span className="text-[11px] text-muted">{field.hint}</span>}
-      </label>
+      <RowLabel
+        htmlFor={id}
+        label={field.label}
+        info={field.info}
+        hint={field.hint}
+        extra={changed && <span className="text-[11px] text-primary" title="Differs from the default">changed</span>}
+      />
       <div className="flex flex-col gap-1 min-w-0">
         {control}
         {error && (
