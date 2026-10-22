@@ -35,6 +35,8 @@ acoustics:
     array_channels: 4
     array_radius: 0.035
     speakerphone_offset: {dist: uniform, lo: 0.3, hi: 0.8}
+    chair_mic: {dist: bernoulli, p: 0.3}                 # large rooms: the table mic sits in front of the chair
+    chair_mic_distance: {dist: uniform, lo: 0.4, hi: 0.6}  # the chair's mouth to the mic, horizontal
   device_chain:
     agc: {dist: bernoulli, p: 0.7}
     band_limit: {dist: bernoulli, p: 0.5}

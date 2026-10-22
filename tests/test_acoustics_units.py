@@ -67,8 +67,9 @@ def test_directivity_lowers_the_level_behind_the_talker(cfg, splits):
     m, c = _meeting(cfg, splits, "small", 3)
     model = RoomModel(m, c.simulation, SR, seed=0)
     mic = tuple(model.mics[:, 0])
-    src = (mic[0] + 1.0, mic[1], mic[2])
-    toward, away = Pose(src, 180.0), Pose(src, 0.0)
+    step = 1.0 if mic[0] < m.room.length / 2 else -1.0  # toward the far wall, so no wall sits right behind the talker
+    src = (mic[0] + step, mic[1], mic[2])
+    toward, away = (Pose(src, 180.0), Pose(src, 0.0)) if step > 0 else (Pose(src, 0.0), Pose(src, 180.0))
     h = model.rirs([toward, away])
     direct = slice(0, int(0.01 * SR) + 100)  # first 10 ms after the onset holds the direct path
     e_to = float(np.sum(h[toward.key()][0][direct] ** 2))

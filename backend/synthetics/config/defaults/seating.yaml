@@ -2,6 +2,7 @@
 seating:
   seated_mouth_height: {dist: uniform, lo: 1.1, hi: 1.2}
   front_wall: W
+  chair_at_head: {dist: bernoulli, p: 0.8}         # large rooms: the chair takes an end seat of the long table
   wall:
     by_choice: {dist: bernoulli, p: 0.15}          # large rooms whose table still has free seats
     by_choice_count: {dist: int_uniform, lo: 1, hi: 3}

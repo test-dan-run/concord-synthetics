@@ -134,9 +134,9 @@ This screen answers one question: did the run produce what `config.yaml` asked f
 | Speakers | Speakers per meeting, all positions, both classes | 1 speaker, 2–20 | Bars coloured by class (2–6 small, 7–20 large) |
 | Rooms and acoustics | RT60, small and large rooms | 0.05 s, 0.2–1.0 s | 0.3–0.6 s small, 0.4–0.9 s large |
 | Rooms and acoustics | SNR at mic, small and large rooms | 2 dB, 0–32 dB | 10–30 dB small, 5–25 dB large |
-| Rooms and acoustics | Mouth-to-mic distance, table seats, laptop and centre mic | 0.25 m | 0.3–0.5 m nearest seat for laptop; centre offset for array |
+| Rooms and acoustics | Mouth-to-mic distance, table seats, laptop and table mic | 0.25 m | 0.3–0.5 m nearest seat for laptop; none for the table mic, which sits at the centre or in front of the chair |
 | Positions | Wall-seated speakers per meeting, large rooms | 1 speaker, 1–8 | None (overflow depends on table capacity) |
-| Positions | Mouth-to-mic distance, wall seats, centre mic | 0.25 m, 0–6 m | None |
+| Positions | Mouth-to-mic distance, wall seats, table mic | 0.25 m, 0–6 m | None |
 | Positions | Mouth-to-mic distance, presenters, small and large rooms | 0.25 m, 0–6 m | None |
 | Turn-taking | Overlap share of speech time, small and large rooms | 2%, 0–36% | 10–20% small, 15–25% large |
 | Turn-taking | Backchannels per minute, all meetings | 0.25 per min, 0–5 | 1–3 per min |

@@ -115,7 +115,7 @@ function Card({ m, to }: { m: MeetingSummary; to: string }) {
           </dl>
           <span className="text-xs text-muted">{positionsLine(m)}</span>
           <div className="mt-auto flex flex-wrap items-center gap-1.5">
-            <span className="rounded bg-track px-1.5 py-px text-[11px] text-muted num">{p.mic.type === "laptop" ? "laptop mic" : p.mic.channels > 1 ? "centre array" : "centre mic"}</span>
+            <span className="rounded bg-track px-1.5 py-px text-[11px] text-muted num">{p.mic.type === "laptop" ? "laptop mic" : `${p.mic.type === "chair" ? "chair" : "centre"} ${p.mic.channels > 1 ? "array" : "mic"}`}</span>
             <span className="rounded bg-track px-1.5 py-px text-[11px] text-muted num">{p.table.shape} table</span>
             <span className="rounded bg-track px-1.5 py-px text-[11px] text-muted num">{p.split}</span>
             <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted">
@@ -214,7 +214,7 @@ export function MeetingBrowser() {
                   options={[
                     { value: "all", label: "All", count: countIn({ room: "all" }) },
                     { value: "small", label: <><Swatch cls="small" />Small · laptop</>, count: countIn({ room: "small" }) },
-                    { value: "large", label: <><Swatch cls="large" />Large · centre</>, count: countIn({ room: "large" }) },
+                    { value: "large", label: <><Swatch cls="large" />Large · table mic</>, count: countIn({ room: "large" }) },
                   ]}
                 />
               </div>

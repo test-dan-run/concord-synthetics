@@ -23,6 +23,9 @@ has the detail, and `docs/OUTPUT_CONTRACT.md` is the reference for the output fi
 | Caching acoustics | Changing acoustic settings re-runs stages 7–8 | Render settings re-run stages 7–8; a changed sampled acoustic distribution re-runs stages 1, 7 and 8 (run revision 2) | `docs/OUTPUT_CONTRACT.md` |
 | Ablations | Every stage has an on/off flag and parameter overrides | Stages 3, 5 and 7 can be switched off; the others produce what later stages need. Parameters are set in the run config, not per stage | `tests/test_ablation.py` |
 | Turn-taking | 30% of transitions overlap by 0.1–1.0 s | 50% by 0.3–2.0 s, so stage 6 needs less stretching to reach the overlap target | `config/defaults/turn_taking.yaml` |
+| Table placement | Anywhere in the room that keeps about 1 m to each wall | At the room centre (`room_classes.table_at_centre`), as meeting rooms are laid out | `config/defaults/room_classes.yaml` |
+| The chair's seat | Any table seat | In large rooms, the head of the table (an end seat on its long axis) with p=0.8 (`seating.chair_at_head`) | `config/defaults/seating.yaml` |
+| Large-room mic | At the table centre with a small offset | At the centre, or with p=0.3 0.4–0.6 m in front of the chair to capture the chair's decisions (`acoustics.mic.chair_mic`, `mic.type` "chair") | `config/defaults/acoustics.yaml` |
 | Gap between turns | Log-normal, median 0.3 s, sigma 0.6, capped at 2 s | Median 0.5 s, sigma 0.5, capped at 2.5 s, because turn changes in the M9 mixtures sounded too quick | `config/defaults/turn_taking.yaml` |
 
 ## Background and goals
@@ -71,7 +74,7 @@ Every meeting's room and setup is randomly sampled under two rules, with the cla
 | Parameter | Small room | Large room |
 | --- | --- | --- |
 | Speakers | 2–6 | 7–20 |
-| Mic | Laptop mic | Centre-table mic (single mic or small array) |
+| Mic | Laptop mic | Table mic (single mic or small array), at the centre or in front of the chair |
 | Length × width | \~3–5 m × 2.5–4 m | \~6–12 m × 4–7 m |
 | Ceiling height | \~2.6–3.0 m | \~2.7–3.5 m |
 | Table | Small rectangular or round | Long rectangular or boardroom oval |
@@ -80,16 +83,18 @@ Sampling order:
 
 1. Pick the room class from a configurable ratio (for example 30% small, 70% large, weighted toward the large-meeting gap).
 2. Sample the speaker count from the class range, using a configurable distribution.
-3. Sample room dimensions and a table, and check the fit: the table seats about one person per 0.6–0.75 m of table edge, with about 1 m of clearance to each wall. Small rooms resample until everyone fits at the table. Large rooms may seat fewer people at the table than attend; the overflow goes to wall seats (step 4).
+3. Sample room dimensions and a table, and check the fit: the table seats about one person per 0.6–0.75 m of table edge, with at least 1 m of clearance to each wall, and the table stands at the centre of the room. Small rooms resample until everyone fits at the table. Large rooms may seat fewer people at the table than attend; the overflow goes to wall seats (step 4).
 4. Place each person in one of three positions:
    - Table seats: around the table edge, mouths at about 1.1–1.2 m height with small jitter.
    - Wall seats (large rooms only): supplementary chairs in a row 0.3–0.6 m from a side or back wall, mouths at about 1.1–1.2 m height. These take the overflow once the table is full, and with a small probability a few attendees choose them even when table seats are free.
    - Presenter spots (both room classes, optional): 1 or 2 people standing near the front wall by the screen, mouths at about 1.5–1.75 m height, 0.5–1.5 m from the wall. Presenters count toward the speaker total.
 
    Seated positions stay fixed for the whole meeting. A presenter may drift within about 1 m of their spot between turns, and returns to a table or wall seat after presenting if the script says so.
+
+   The chair is a table-seated person, weighted toward seniority. In large rooms the chair takes the head of the table with p=0.8: an end seat on the table's long axis, trading places with whoever sat there.
 5. Place the mic:
    - Laptop: on the table edge, 0.3–0.5 m in front of one random seat, 0.1–0.25 m above the table.
-   - Centre mic: at the table centre with a small offset, about 0.05 m above the surface.
+   - Table mic (large rooms): at the table centre with a small offset, about 0.05 m above the surface. With p=0.3 it sits instead 0.4–0.6 m (horizontally) in front of the chair's mouth, to capture the chair's decisions best.
 6. Sample acoustics (wall materials, RT60, noise types and SNR) from per-class ranges.
 7. Sample meeting dynamics: per-speaker turn shares (skewed, Zipf-like), whether the meeting has a presentation segment (and its presenters), whether the meeting is hybrid (remote participants through a speakerphone), and topic.
 

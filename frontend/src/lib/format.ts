@@ -59,6 +59,13 @@ export function ago(iso: string | null | undefined): string {
 }
 
 /** Metres: "1.60 m". */
+/** A mic in a few words: "laptop", or where a large room's table mic sits and whether it is an array. */
+export function micName(mic: { type: string; channels: number }): string {
+  if (mic.type === "laptop") return "laptop";
+  const place = mic.type === "chair" ? "at the chair" : "centre";
+  return mic.channels > 1 ? `${place} · ${mic.channels}-ch array` : `${place} · single`;
+}
+
 export function metres(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || Number.isNaN(v)) return DASH;
   return `${v.toFixed(digits)} m`;

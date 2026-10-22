@@ -532,7 +532,8 @@ below give what was built and what the exit check found.
 | M11 Hardening | done | Oct 21 |
 | M12 Viewer API | done | Oct 21 |
 | M13 Viewer UI | done | Oct 21 |
-| M14 Run builder in the viewer | first version, branch `run-builder` | |
+| M14 Run builder in the viewer | done | Oct 22 (merged) |
+| M15 Room layout and the chair mic | first version, branch `room-layout` | |
 
 M4 to M8 were built in parallel by three agents in separate worktrees, under the rules in `docs/PARALLEL_WORK.md`.
 That file is now history.
@@ -774,6 +775,30 @@ That file is now history.
 - Not done yet: a run cannot be deleted or renamed from the UI, a stop while `stack.py up` is still starting
   services can leave them up (the same as Ctrl-C in a terminal), and the time estimate is a single ratio from
   `m9-e2e`.
+
+### M15: Room layout and the chair mic
+
+- Goal: rooms laid out as meeting rooms are, and a mic that sometimes sits by the chair to capture the decisions.
+- Built (Oct 22, branch `room-layout`), all in stage 1:
+  - The table stands at the room centre (`room_classes.table_at_centre`). Fit resamples do not rise: over 2,000
+    meetings, 1.1 per small meeting (1.3 before) and none for large ones.
+  - In large rooms the chair takes the head of the table with p=0.8 (`seating.chair_at_head`). The head is the
+    end seat or seats on the table's long axis (`geometry.head_slots`). The chair trades seats with whoever sat
+    there, and seats kept for returning presenters are left alone. With the chairs that land there anyway, 85% of
+    large meetings have the chair at the head (13% before).
+  - The large-room table mic sits 0.4 to 0.6 m in front of the chair's mouth with p=0.3
+    (`acoustics.mic.chair_mic`, `chair_mic_distance`) instead of near the centre. `mic.type` is then "chair"
+    and `mic.near_speaker` the chair. The array draw is the same as for the centre mic.
+  - Old runs do not change. A frozen config without the new settings reads defaults that reproduce it (centre
+    off, both chances 0), and stage 1's cache key leaves a setting out while it holds that default
+    (`ADDED_SETTINGS` in `s1_sample.py`), so `m9-e2e` and `m5-exit` stay cache hits and their `meeting.json`
+    files are reproduced byte for byte. New runs need no revision bump.
+  - The sampler report checks the table centre, the chair mic share and distance, and the chair at the head (at
+    least p). The viewer names the chair mic, and New dataset has the three settings with info text.
+- Tests: `tests/test_sampler.py` (the centre, the head seats of each table shape, the chair at the head, the chair
+  mic's place, the cache key of older configs). Two tests that leaned on the old draws were made robust: the
+  directivity test now puts its talker on the side of the mic with more room, and the stage 6 interruption bound
+  counts the presentation Q&A's own interruptions.
 
 ### After M13: performance backlog (not scheduled)
 

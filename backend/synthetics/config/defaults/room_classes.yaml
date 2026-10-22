@@ -21,7 +21,8 @@ room_classes:
         rect: {width: {dist: uniform, lo: 1.0, hi: 1.5}, length_frac: {dist: uniform, lo: 0.5, hi: 1.0}, min_length: 2.4}
         oval: {width: {dist: uniform, lo: 1.2, hi: 1.8}, length_frac: {dist: uniform, lo: 0.5, hi: 1.0}, min_length: 2.4}
   seat_pitch: {dist: uniform, lo: 0.6, hi: 0.75}   # one person per 0.6-0.75 m of table edge
-  wall_clearance: 1.0                              # table edge to every wall
+  wall_clearance: 1.0                              # table edge to every wall, at least
+  table_at_centre: true                            # Oct 22, 2026: was anywhere that kept the clearance
   table_height: {dist: uniform, lo: 0.72, hi: 0.76}
   seat_offset: {dist: uniform, lo: 0.2, hi: 0.3}   # mouth, outward from the table edge
   min_person_gap: 0.5

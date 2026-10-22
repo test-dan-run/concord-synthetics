@@ -204,7 +204,7 @@ function Body({ cfg, meetings }: { cfg: RunConfig; meetings: MeetingSummary[] })
               key={`dist${c}`}
               id={`h-dist-table-${c}`}
               swatch={CLASS_COLOR[c]}
-              title={`Mouth-to-mic distance · ${c === "small" ? "laptop" : "centre"}, table seats`}
+              title={`Mouth-to-mic distance · ${c === "small" ? "laptop" : "table mic"}, table seats`}
               subtitle={`${d.length} seats · metres, 3D`}
               bins={histogram(d, 0, 5, 0.25)}
               color={CLASS_COLOR[c]}
@@ -213,7 +213,7 @@ function Body({ cfg, meetings }: { cfg: RunConfig; meetings: MeetingSummary[] })
               tick={m1}
               binLabel={binText(" m", 2)}
               unit="seats"
-              note={c === "small" ? "The laptop sits 0.3–0.5 m (horizontally) in front of one seat: near-far imbalance by design." : "Ends of long tables sit farthest; wall seats and presenters are charted under Positions."}
+              note={c === "small" ? "The laptop sits 0.3–0.5 m (horizontally) in front of one seat: near-far imbalance by design." : `The mic sits at the centre, or in front of the chair (p = ${cfg.acoustics.mic.chair_mic?.p ?? 0}), when the far end of the table is farthest. Wall seats and presenters are charted under Positions.`}
             />
           );
         })}
@@ -237,7 +237,7 @@ function Body({ cfg, meetings }: { cfg: RunConfig; meetings: MeetingSummary[] })
           id="h-dist-wall"
           swatch={CLASS_COLOR.large}
           title="Mouth-to-mic distance · wall seats"
-          subtitle={`${distances(large, "wall").length} seats · centre mic · metres, 3D`}
+          subtitle={`${distances(large, "wall").length} seats · table mic · metres, 3D`}
           bins={histogram(distances(large, "wall"), 0, 6, 0.25)}
           color={CLASS_COLOR.large}
           ticks={ticksEvery(0, 6, 1)}
@@ -252,7 +252,7 @@ function Body({ cfg, meetings }: { cfg: RunConfig; meetings: MeetingSummary[] })
             id={`h-dist-pres-${c}`}
             swatch={CLASS_COLOR[c]}
             title={`Mouth-to-mic distance · presenters, ${CLASS_NAME[c]}`}
-            subtitle={`${distances(of(c), "presenter").length} presenters · ${c === "small" ? "laptop" : "centre"} mic · metres, 3D`}
+            subtitle={`${distances(of(c), "presenter").length} presenters · ${c === "small" ? "laptop" : "table"} mic · metres, 3D`}
             bins={histogram(distances(of(c), "presenter"), 0, 6, 0.25)}
             color={CLASS_COLOR[c]}
             ticks={ticksEvery(0, 6, 1)}
@@ -335,7 +335,7 @@ export function Distributions() {
         actions={
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legend">
             <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-cat-1" />Small room · laptop mic</span>
-            <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-cat-2" />Large room · centre mic</span>
+            <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-cat-2" />Large room · table mic</span>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-primary" />All meetings</span>
             <span className="inline-flex items-center gap-1.5"><span aria-hidden className="w-3 h-2 border border-dashed border-muted bg-line/40" />Configured range</span>
           </span>

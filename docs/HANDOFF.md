@@ -43,13 +43,20 @@ Room Config Viewer (read-only API plus web UI) reads any run. What is left is th
   before the change is `DESIGN_SYSTEM.md.bak` beside it). Checked by screenshot against the mock-ups at
   1440 px and 390 px, and by keyboard.
 
-## Run builder (M14, branch `run-builder`, Oct 21)
+## Run builder (M14, Oct 21, merged Oct 22)
 
 The viewer can now create and run a dataset: Generate, then New dataset, gives a form over the common settings
 plus a YAML overlay, with a live stage 1 preview of the meetings the run will get; Create writes the frozen config,
 and the Pipeline screen starts, stops and follows the run in a background process (`process.json`,
 `process.log`). Real-backend runs ask for confirmation and list the GPU services they lease. Only one run runs at a
 time. `synthetics viewer --read-only` turns it off. Details in `IMPLEMENTATION_PLAN.md` §5, M14.
+
+## Room layout and the chair mic (M15, branch `room-layout`, Oct 22)
+
+New runs put the table at the room centre. In large rooms the chair takes the head of the table 80% of the time,
+and 30% of the time the table mic sits in front of the chair instead of near the centre (`mic.type` "chair"). All
+three are settings in the defaults and in New dataset. Old runs keep their layouts and stay cache hits. Details in
+`IMPLEMENTATION_PLAN.md` §5, M15.
 
 ## Decisions waiting for you
 
