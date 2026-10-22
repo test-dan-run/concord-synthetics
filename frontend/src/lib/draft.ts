@@ -50,7 +50,7 @@ export const SECTIONS: Section[] = [
       {
         path: "room_classes.ratio", label: "Room class mix", kind: "weights", keys: ["small", "large"], hint: "Share of meetings in each class",
         info: {
-          what: "The share of meetings drawn as small rooms (2 to 6 speakers, laptop mic) or large rooms (7 to 20 speakers, a mic in the middle of the table).",
+          what: "The share of meetings drawn as small rooms (2 to 6 speakers, laptop mic) or large rooms (7 to 20 speakers, a mic on the table, at its centre or in front of the chair).",
           why: "Large meetings are the rarest real data and the hardest for diarisation, so the default leans 70% large. Lower it if the model will mostly meet small calls.",
         },
       },
@@ -66,6 +66,13 @@ export const SECTIONS: Section[] = [
         info: {
           what: "How many people take part in a large-room meeting, drawn evenly from the range. Presenters and remote participants count.",
           why: "Meetings with more than 15 speakers are where current models do worst and real data is scarcest. The range must stay inside 7 to 20.",
+        },
+      },
+      {
+        path: "room_classes.table_at_centre", label: "Table at the room centre", kind: "toggle",
+        info: {
+          what: "Puts the table in the middle of the room, with equal space on either side. Off, the table goes anywhere that still leaves 1 m to every wall.",
+          why: "Meeting rooms are usually laid out around a centred table, so speakers sit at even distances from the walls. That sets how the walls reflect each voice into the mic.",
         },
       },
       ...perClass((c) => `dynamics.duration_min.${c}`, "Meeting length", { kind: "range", unit: "min", min: 1, max: 180, step: 1 }, both({
@@ -134,6 +141,13 @@ export const SECTIONS: Section[] = [
         why: "Remote speech comes through a codec and a loudspeaker, with echo cancellation artifacts, so it sounds very different from people in the room. Models need to hear both kinds.",
       })),
       {
+        path: "seating.chair_at_head", label: "Chair at the head · large", kind: "prob",
+        info: {
+          what: "In large rooms, the chance that the person chairing the meeting sits at the head of the table, an end seat on its long axis. Otherwise the chair sits in any table seat.",
+          why: "In large meetings the chair usually takes the head of the table. From there they are far from a centre mic and talk down the length of the table, which changes how their voice reaches the mic.",
+        },
+      },
+      {
         path: "seating.wall.by_choice", label: "Wall seats by choice · large", kind: "prob", hint: "When the table still has room",
         info: {
           what: "In large rooms where the table still has free seats, the chance that one to three people sit on chairs along the wall anyway. People also go to the wall when the table is full.",
@@ -156,9 +170,16 @@ export const SECTIONS: Section[] = [
         why: "Lower SNR means noisier recordings. Data that is too clean leaves a model unready for real rooms; data that is too noisy stops looking like a meeting.",
       })),
       {
-        path: "acoustics.mic.centre_array", label: "Centre mic is an array", kind: "prob",
+        path: "acoustics.mic.chair_mic", label: "Mic in front of the chair · large", kind: "prob",
         info: {
-          what: "Large rooms record from a mic in the middle of the table. This is the chance that it is a 4-channel array (3.5 cm radius) instead of a single mic. Arrays also write mixture_mc.wav.",
+          what: "In large rooms, the chance that the table mic sits 0.4 to 0.6 m in front of the chair instead of near the middle of the table.",
+          why: "Some rooms place the mic by the chair to capture the decisions best. The chair is then loud and clear, and the people at the far end of the table are faint, a near-far imbalance the model should learn.",
+        },
+      },
+      {
+        path: "acoustics.mic.centre_array", label: "Table mic is an array", kind: "prob",
+        info: {
+          what: "Large rooms record from a mic on the table. This is the chance that it is a 4-channel array (3.5 cm radius) instead of a single mic. Arrays also write mixture_mc.wav.",
           why: "Multichannel audio lets the fine-tuning team use spatial cues to separate speakers. Every meeting still gets a single-channel mixture.",
         },
       },

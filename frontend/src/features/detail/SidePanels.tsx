@@ -4,7 +4,7 @@
 import type { ReactNode } from "react";
 import { Fact, Panel } from "../../components/ui";
 import type { AcousticRender, MeetingSpec, RunConfig, Timeline, Wall } from "../../lib/api";
-import { DASH, db, hms, metres, num, pct, signedDeg } from "../../lib/format";
+import { DASH, db, hms, metres, micName, num, pct, signedDeg } from "../../lib/format";
 import { SV_MODELS, placeOf, type PersonRow, wallChairLabel } from "../../lib/people";
 
 const WALL_SIDE: Record<Wall, string> = { N: "N (side)", S: "S (side)", E: "E (back)", W: "W (front)" };
@@ -115,7 +115,7 @@ export function FactPanels({ m, config, render, timeline }: { m: MeetingSpec; co
         <Fact k="Remote" v={m.dynamics.remote_speakers.length ? `${m.dynamics.remote_speakers.join(", ")} via speakerphone` : "none"} />
       </FactPanel>
       <FactPanel title="Microphone" id="facts-mic">
-        <Fact k="Type" v={mic.type === "laptop" ? "laptop" : mic.channels > 1 ? `centre array, ${mic.channels}-ch` : "centre, single"} />
+        <Fact k="Type" v={micName(mic)} />
         <Fact k="Position" v={mic.position.map((v) => v.toFixed(2)).join(", ")} />
         {mic.type === "centre" ? (
           <Fact k="Offset from centre" v={`${(mic.position[0] - t.center[0]).toFixed(2)}, ${(mic.position[1] - t.center[1]).toFixed(2)} m`} />

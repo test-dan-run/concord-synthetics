@@ -98,6 +98,9 @@ class RoomClassesConfig(_M):
     seat_offset: Uniform = Uniform(lo=0.2, hi=0.3)  # mouth, horizontally outward from the table edge
     min_person_gap: float = 0.5  # any two people in the room, 2D
     max_fit_resamples: int = 500
+    # Added Oct 22, 2026 (new runs set it in room_classes.yaml). The default, a table anywhere that keeps the wall
+    # clearance, is how earlier runs placed it, and a frozen config without the field reads it.
+    table_at_centre: bool = False
 
     @model_validator(mode="after")
     def _ranges(self) -> RoomClassesConfig:
@@ -147,6 +150,9 @@ class SeatingConfig(_M):
     presenters: PresenterConfig
     screen: ScreenConfig = ScreenConfig()
     front_wall: Wall = "W"
+    # Large rooms: the chance that the chair takes the head of the table, an end seat on its long axis. Added
+    # Oct 22, 2026; the default 0 is how earlier runs seated the chair (any table seat).
+    chair_at_head: Bernoulli = Bernoulli(p=0.0)
 
 
 # ---------------------------------------------------------------- acoustics
@@ -161,6 +167,10 @@ class MicConfig(_M):
     array_channels: int = 4
     array_radius: float = 0.035
     speakerphone_offset: Uniform = Uniform(lo=0.3, hi=0.8)  # from the table centre along the long axis
+    # Large rooms: the chance that the table mic sits in front of the chair instead of at the centre, to capture
+    # the chair's decisions best. Added Oct 22, 2026; the default 0 is how earlier runs placed it.
+    chair_mic: Bernoulli = Bernoulli(p=0.0)
+    chair_mic_distance: Uniform = Uniform(lo=0.4, hi=0.6)  # the chair's mouth to the mic, horizontal
 
 
 class DeviceChainConfig(_M):

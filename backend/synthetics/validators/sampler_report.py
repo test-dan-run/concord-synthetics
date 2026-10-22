@@ -59,6 +59,14 @@ def _uniform_sd(u: Uniform | IntUniform) -> float:
     return (u.hi - u.lo) / math.sqrt(12)
 
 
+def _at_least(name: str, hits: Iterable[bool], p: float, note: str = "") -> Check:
+    """A rate that the setting `p` only sets a floor for (draws that miss can still land on the outcome)."""
+    c = _rate(name, hits, p, note)
+    if isinstance(c.observed, float):
+        c.target, c.ok = f">= {p}", c.observed >= p - (c.tolerance or 0)
+    return c
+
+
 def _in_range(name: str, values: Sequence[float], lo: float, hi: float, eps: float = 1e-3) -> Check:
     bad = [v for v in values if v < lo - eps or v > hi + eps]
     return Check(name, f"[{lo}, {hi}]", f"[{min(values):.3f}, {max(values):.3f}]" if values else "n/a", None,
@@ -140,7 +148,17 @@ def sampler_checks(cfg: RunConfig, meetings: Sequence[MeetingSpec]) -> list[Chec
                         dc.clipping.p))
     checks.append(_rate("device: AEC artifacts | hybrid", (m.device_chain.aec_artifacts for m in meetings
                                                           if m.dynamics.hybrid), dc.aec_artifacts_if_hybrid.p))
-    checks.append(_rate("centre mic: array", (m.mic.channels > 1 for m in large), ac.mic.centre_array.p))
+    checks.append(_rate("table mic: array", (m.mic.channels > 1 for m in large), ac.mic.centre_array.p))
+    checks.append(_rate("large: table mic in front of the chair", (m.mic.type == "chair" for m in large),
+                        ac.mic.chair_mic.p))
+    chair_mic = [geo.dist2(m.mic.position[:2], m.person(m.mic.near_speaker).mouth[:2]) for m in large
+                 if m.mic.type == "chair" and m.mic.near_speaker]
+    if chair_mic:
+        checks.append(_in_range("chair mic to the chair (horizontal)", chair_mic, ac.mic.chair_mic_distance.lo,
+                                ac.mic.chair_mic_distance.hi))
+    if seat.chair_at_head.p > 0:
+        checks.append(_at_least("large: chair at the head of the table", (_chair_at_head(m) for m in large),
+                                seat.chair_at_head.p, "chairs drawn elsewhere can land at the head too"))
 
     # geometry ranges over every meeting
     pitches = [m.table.seat_pitch for m in meetings]
@@ -165,6 +183,10 @@ def sampler_checks(cfg: RunConfig, meetings: Sequence[MeetingSpec]) -> list[Chec
                                 ac.mic.laptop_distance.hi))
     clear = [_table_clearance(m) for m in meetings]
     checks.append(_in_range("table clearance to walls", clear, rc.wall_clearance, 1e9))
+    if rc.table_at_centre:
+        off = [max(abs(m.table.center[0] - m.room.length / 2), abs(m.table.center[1] - m.room.width / 2))
+               for m in meetings]
+        checks.append(_in_range("table centre off the room centre", off, 0.0, 0.0))
     chair_top = [max(m.dynamics.turn_shares.values()) == m.dynamics.turn_shares[m.dynamics.chair_id]
                  for m in meetings]
     checks.append(_rate("chair takes the top turn share", chair_top, 1.0))
@@ -172,6 +194,12 @@ def sampler_checks(cfg: RunConfig, meetings: Sequence[MeetingSpec]) -> list[Chec
                         float(np.mean([m.fit_resamples for m in meetings])) if meetings else 0.0, 1.0,
                         "informational"))
     return checks
+
+
+def _chair_at_head(m: MeetingSpec) -> bool:
+    chair = m.person(m.dynamics.chair_id)
+    heads = geo.head_slots([s.edge_xy for s in m.table.slots], m.table.center, m.table.shape)
+    return chair.seat is not None and chair.seat.index in heads
 
 
 def _table_clearance(m: MeetingSpec) -> float:

@@ -156,7 +156,7 @@ from the `labels/manifest_entry.json` files after every stage 8 phase, and with 
 |---|---|
 | `run_id`, `meeting_id`, `seed` | The meeting can be generated again from `seed` and `config.yaml` |
 | `split`, `room_class`, `n_speakers`, `duration` | For slicing results |
-| `sampled` | Every scalar of `meeting.json` with dotted keys (`room.rt60_target`, `mic.type`, `acoustics.snr_db`, `device_chain.codec_kbps`, ...). Per-person data is in `speakers` |
+| `sampled` | Every scalar of `meeting.json` with dotted keys (`room.rt60_target`, `mic.type`, `acoustics.snr_db`, `device_chain.codec_kbps`, ...). Per-person data is in `speakers`. `mic.type` is "laptop" (small rooms), "centre" or "chair" (large rooms; "chair" from Oct 22, 2026, a table mic in front of the chair, with `mic.near_speaker` the chair's speaker id) |
 | `stages_enabled` | Stage name -> on or off, for ablation runs |
 | `position_counts` | Number of people at the table, on wall seats, presenting and remote |
 | `speakers` | Per speaker: NSC voice (after any swap), split, position type, wall reason, realised share of speech time, ASR-limited utterance count |

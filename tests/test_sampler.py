@@ -8,6 +8,7 @@ import math
 import numpy as np
 import pytest
 
+from conftest import make_cfg
 from synthetics.acoustics import geometry as geo
 from synthetics.artifacts.io import write_model
 from synthetics.artifacts.paths import RunPaths
@@ -83,7 +84,7 @@ def test_small_rooms_never_use_wall_seats(meetings):
             assert m.count("wall") == 0 and not m.wall_chairs
             assert m.n_speakers <= 6 and m.mic.type == "laptop"
         else:
-            assert m.n_speakers >= 7 and m.mic.type == "centre"
+            assert m.n_speakers >= 7 and m.mic.type in ("centre", "chair")
 
 
 def test_wall_seats_and_reasons(cfg, meetings):
@@ -159,11 +160,69 @@ def test_mic_placement(cfg, meetings):
             assert geo.point_table_distance(m.mic.position[:2], m.table.shape, m.table.center, m.table.length,
                                             m.table.width) == 0.0, "laptop sits on the table"
         else:
+            assert m.room_class == "large"
             assert math.isclose(m.mic.position[2], m.table.height + mc.centre_height, abs_tol=1e-3)
             assert m.mic.channels in (1, mc.array_channels) and len(m.mic.array_geometry) == m.mic.channels
+        if m.mic.type == "chair":
+            assert m.mic.near_speaker == m.dynamics.chair_id
+            d = geo.dist2(m.person(m.dynamics.chair_id).mouth[:2], m.mic.position[:2])
+            assert mc.chair_mic_distance.lo - 1e-3 <= d <= mc.chair_mic_distance.hi + 1e-3
+            assert geo.point_table_distance(m.mic.position[:2], m.table.shape, m.table.center, m.table.length,
+                                            m.table.width) == 0.0, "the chair mic sits on the table"
+        elif m.mic.type == "centre":
+            assert m.mic.near_speaker is None
         if m.dynamics.hybrid:
             assert m.speakerphone is not None and m.speakerphone.remote_speakers == m.dynamics.remote_speakers
             assert m.count("remote") == len(m.dynamics.remote_speakers) > 0
+
+
+def test_table_sits_at_the_room_centre(cfg, meetings):
+    assert cfg.room_classes.table_at_centre
+    for m in meetings:
+        assert math.isclose(m.table.center[0], m.room.length / 2, abs_tol=1e-4), m.meeting_id
+        assert math.isclose(m.table.center[1], m.room.width / 2, abs_tol=1e-4), m.meeting_id
+
+
+def test_head_of_the_table():
+    rect = geo.rect_slots((3.0, 2.0), 3.0, 1.4, 0.65)  # two seats at each end
+    heads = geo.head_slots([s.xy for s in rect], (3.0, 2.0), "rect")
+    assert {rect[i].side for i in heads} == {"E", "W"} and len(heads) == 4
+    oval = geo.stadium_slots((3.0, 2.0), 3.0, 1.4, 12)
+    heads = geo.head_slots([s.xy for s in oval], (3.0, 2.0), "oval")
+    assert {oval[i].xy[0] < 3.0 for i in heads} == {True, False}  # both ends
+    assert all(abs(oval[i].xy[0] - 3.0) > 0.8 for i in heads), "on the end arcs, past the straight sides"
+    round_ = geo.ellipse_slots((2.0, 2.0), 1.2, 1.2, 6)
+    assert geo.head_slots([s.xy for s in round_], (2.0, 2.0), "round") == []
+
+
+def test_chair_takes_the_head_of_large_tables(cfg, splits):
+    always = make_cfg(**{"seating.chair_at_head": {"dist": "bernoulli", "p": 1.0}})
+    for i in range(200):
+        m = sample_meeting(always, splits, meeting_id_for(i), i, np.random.default_rng(i))
+        if m.room_class != "large":
+            continue
+        chair = m.person(m.dynamics.chair_id)
+        heads = geo.head_slots([s.edge_xy for s in m.table.slots], m.table.center, m.table.shape)
+        kept = {r.index for r in (m.dynamics.presentation.returns.values() if m.dynamics.presentation else [])
+                if r is not None and r.kind == "table"}
+        if set(heads) - kept:
+            assert chair.seat.index in heads, m.meeting_id
+        # still one person per seat, and the slot owners agree with the people
+        owners = {s.index: s.occupied_by for s in m.table.slots if s.occupied_by}
+        assert owners == {p.seat.index: p.speaker_id for p in m.people if p.position_type == "table"}
+
+
+def test_settings_added_later_stay_out_of_older_runs_cache_keys(cfg):
+    # an older frozen config reads the added settings at their defaults; its stage 1 slice must not change
+    off = {"dist": "bernoulli", "p": 0.0}
+    old = make_cfg(**{"room_classes.table_at_centre": False, "seating.chair_at_head": off,
+                      "acoustics.mic.chair_mic": off})
+    old_slice = SampleStage().config_slice(old).model_dump(mode="json")
+    assert "table_at_centre" not in old_slice["room_classes"] and "chair_at_head" not in old_slice["seating"]
+    assert not {"chair_mic", "chair_mic_distance"} & set(old_slice["acoustics"]["mic"])
+    new_slice = SampleStage().config_slice(cfg).model_dump(mode="json")
+    assert new_slice["room_classes"]["table_at_centre"] is True
+    assert new_slice["acoustics"]["mic"]["chair_mic_distance"] == {"dist": "uniform", "lo": 0.4, "hi": 0.6}
 
 
 def test_same_seed_gives_byte_identical_meeting_json(cfg, splits, tmp_path):

@@ -132,11 +132,11 @@ class Person(_A):
 
 
 class Mic(_A):
-    type: Literal["laptop", "centre"]
+    type: Literal["laptop", "centre", "chair"]  # chair: a table mic in front of the chair (large rooms)
     position: Vec3
     channels: int
     array_geometry: list[Vec3] = Field(default_factory=list)  # per-capsule offsets from `position`
-    near_speaker: str | None = None  # laptop: the seat it sits in front of
+    near_speaker: str | None = None  # laptop and chair mics: the seat it sits in front of
 
 
 class Speakerphone(_A):

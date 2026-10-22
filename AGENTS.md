@@ -4,7 +4,7 @@ This file is the starting point for anyone, person or coding agent, who works on
 application is for and what its design commits to, in one place. The detailed documents it summarises are listed
 under "Where the detail lives", and they win when they disagree with this file.
 
-Last updated Oct 21, 2026, after milestone M13.
+Last updated Oct 22, 2026, with milestone M15 on its branch.
 
 ## Purpose
 
@@ -20,9 +20,9 @@ the fine-tuning team can replace the defaults with measured values by editing YA
 
 The goals are:
 
-- Realistic meetings in small rooms (2 to 6 speakers, laptop mic) and large rooms (7 to 20 speakers, centre-table
-  mic), with the hard parts of real meetings: overlapping speech, short turns, backchannels, interruptions and a
-  long tail of people who rarely speak.
+- Realistic meetings in small rooms (2 to 6 speakers, laptop mic) and large rooms (7 to 20 speakers, a table
+  mic at the centre or in front of the chair), with the hard parts of real meetings: overlapping speech, short
+  turns, backchannels, interruptions and a long tail of people who rarely speak.
 - Singapore speech: Singlish discourse particles, code-switching into Mandarin, Malay and Tamil, local accents, and
   local names and acronyms.
 - Labels that match the audio exactly: speaker turns (RTTM), word timestamps and normalised transcripts.
@@ -54,7 +54,9 @@ Stage 1 samples the room class, speaker count, room, table and seats, presenters
 device chain and meeting dynamics. It also assigns each person an NSC reference speaker from the meeting's split,
 and then samples the persona (gender, ethnicity, first language, code-switching) to match that speaker, so the
 persona and the voice agree. People sit at the table, on wall chairs in large rooms (when the table is full, or by
-choice), or stand at the front as presenters. Hybrid meetings add remote participants heard through a speakerphone.
+choice), or stand at the front as presenters. The table stands at the room centre. In large rooms the chair
+usually takes the head of the table, and the table mic sits near the centre or, in some meetings, in front of the
+chair. Hybrid meetings add remote participants heard through a speakerphone.
 
 Stage 2 first plans the turns (who speaks, and with which interaction type), so the turn shares and the overlap,
 interruption and backchannel counts are met by construction. The generator LLM then writes the words in chunks of

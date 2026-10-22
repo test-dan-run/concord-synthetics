@@ -5,7 +5,7 @@ import type { KeyboardEvent } from "react";
 import { MicMark, PlateLabel, TableOutline, wallStyle } from "../../components/plan";
 import type { MeetingSpec, Wall } from "../../lib/api";
 import { C } from "../../lib/colors";
-import { metres } from "../../lib/format";
+import { metres, micName } from "../../lib/format";
 import { projector, seatRadius, speakerNumber } from "../../lib/geometry";
 import type { PersonRow } from "../../lib/people";
 
@@ -174,7 +174,7 @@ export function FloorPlan({ m, rows, selected, onSelect, layers }: { m: MeetingS
 
       <MicMark x={mx} y={my} />
       <PlateLabel x={mx} y={my + 24} color={C.fg}>
-        {`MIC · ${m.mic.type === "laptop" ? "laptop" : m.mic.channels > 1 ? `${m.mic.channels}-ch array` : "centre"} · z ${metres(m.mic.position[2])}`}
+        {`MIC · ${micName(m.mic)} · z ${metres(m.mic.position[2])}`}
       </PlateLabel>
 
       {/* selected speaker's mouth-to-mic path, always shown */}

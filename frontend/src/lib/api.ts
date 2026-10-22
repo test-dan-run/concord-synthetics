@@ -58,6 +58,7 @@ export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];
 export type Wall = "N" | "E" | "S" | "W";
 export type PositionType = "table" | "wall" | "presenter" | "remote";
+export type MicType = "laptop" | "centre" | "chair";
 export type Split = "train" | "dev" | "test";
 
 export interface RunInfo {
@@ -130,7 +131,7 @@ export interface Plan {
   table: { shape: "rect" | "round" | "oval"; center: Vec2; length: number; width: number; capacity: number; slots: { xy: Vec2; occupied_by: string | null }[] };
   wall_chairs: { xy: Vec2; wall: Wall; occupied_by: string | null }[];
   people: { speaker_id: string; position_type: PositionType; wall_reason: "overflow" | "by_choice" | null; mouth: Vec3 | null; is_chair: boolean; turn_share: number }[];
-  mic: { type: "laptop" | "centre"; position: Vec3; channels: number };
+  mic: { type: MicType; position: Vec3; channels: number };
   speakerphone: Speakerphone | null;
   hybrid: boolean;
   presentation: boolean;
@@ -326,7 +327,7 @@ export interface MeetingSpec {
   table: { shape: "rect" | "round" | "oval"; center: Vec2; length: number; width: number; height: number; seat_pitch: number; capacity: number; slots: TableSlot[] };
   wall_chairs: { index: number; wall: Wall; offset: number; xy: Vec2; occupied_by: string | null }[];
   people: Person[];
-  mic: { type: "laptop" | "centre"; position: Vec3; channels: number; array_geometry: Vec3[]; near_speaker: string | null };
+  mic: { type: MicType; position: Vec3; channels: number; array_geometry: Vec3[]; near_speaker: string | null };
   speakerphone: Speakerphone | null;
   acoustics: {
     rt60: number;
@@ -412,7 +413,7 @@ export interface RunConfig {
   sample_rate: number;
   room_classes: { ratio: Dist; classes: Record<RoomClass, { speakers: Dist }> };
   seating: { wall: { by_choice: Dist }; presenters: { presentation: Record<RoomClass, Dist> } };
-  acoustics: { rt60: Record<RoomClass, Dist>; snr_db: Record<RoomClass, Dist>; hybrid: Record<RoomClass, Dist>; mic: { laptop_distance: Dist } };
+  acoustics: { rt60: Record<RoomClass, Dist>; snr_db: Record<RoomClass, Dist>; hybrid: Record<RoomClass, Dist>; mic: { laptop_distance: Dist; chair_mic?: Dist } };
   turn_taking: { overlap_target: Record<RoomClass, Dist>; backchannels_per_min: Dist; interruption_rate: Dist; zipf: { exponent: number } };
   [k: string]: unknown;
 }

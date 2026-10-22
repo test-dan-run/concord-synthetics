@@ -259,7 +259,7 @@ def check_meeting(rows: _Rows, paths: MeetingPaths, cfg: RunConfig, splits: Spea
     rows.expect(a, "NSC reference speaker per persona", mid,
                 {x.speaker_id: x.nsc_speaker for x in entry.speakers} == voices, "differs from synthesis.json")
     rows.expect(a, "tags: mic type, table shape", mid,
-                s.get("mic.type") in ("laptop", "centre") and s.get("table.shape") in TABLE_SHAPES,
+                s.get("mic.type") in ("laptop", "centre", "chair") and s.get("table.shape") in TABLE_SHAPES,
                 f"mic.type {s.get('mic.type')!r}, table.shape {s.get('table.shape')!r}")
     rows.expect(a, "hybrid", mid, s.get("dynamics.hybrid") is (counts["remote"] > 0), f"{s.get('dynamics.hybrid')!r}")
     rendered = entry.stages_enabled.get("acoustic", True)  # an ablation without stage 7 measures nothing

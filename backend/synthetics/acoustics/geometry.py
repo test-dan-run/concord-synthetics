@@ -134,6 +134,20 @@ def stadium_slots(center: Vec2, length: float, width: float, n: int, phase: floa
     return out
 
 
+def head_slots(edge_xy: list[Vec2], center: Vec2, shape: str) -> list[int]:
+    """Indices of the seats at the head of the table, from each seat's point on the table edge: at each end of the
+    long axis (x), the seats furthest along it, so a rect table's end sides and an oval's end arcs. A round table has
+    no head."""
+    if shape == "round" or not edge_xy:
+        return []
+    out: set[int] = set()
+    for sign in (-1.0, 1.0):
+        reach = [sign * (xy[0] - center[0]) for xy in edge_xy]
+        far = max(reach)
+        out.update(i for i, x in enumerate(reach) if x > far - 0.01)
+    return sorted(out)
+
+
 def point_table_distance(p: Vec2, shape: str, center: Vec2, length: float, width: float) -> float:
     """Distance from a point to the table outline (0 inside). Round = circle, oval = stadium."""
     dx, dy = p[0] - center[0], p[1] - center[1]

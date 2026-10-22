@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from collections import defaultdict
 
 import numpy as np
@@ -36,10 +37,17 @@ def many(cfg, splits):
     return list(_meetings(cfg, splits, 80))
 
 
+def _qa_interruptions(m: MeetingSpec, utts: list[Utt]) -> int:
+    """Questions that cut in on a presenter. The Q&A of a presentation plans them on top of the drawn rate."""
+    presenters = set(m.dynamics.presentation.presenters) if m.dynamics.presentation else set()
+    main = [u for u in utts if u.kind not in ("backchannel", "side")]
+    return sum(b.kind == "interruption" and a.speaker_id in presenters for a, b in itertools.pairwise(main))
+
+
 def test_realised_rates_fall_within_their_configured_ranges(cfg, many):
     tt = cfg.turn_taking
     overlap, bc, intr, missed = [], [], [], []
-    for m, _, tl, b in many:
+    for m, utts, tl, b in many:
         s = tl.stats
         lo, hi = tt.overlap_target[m.room_class].lo, tt.overlap_target[m.room_class].hi
         assert lo - 0.005 <= s.overlap_share <= hi + 0.005, (m.meeting_id, s.overlap_share)
@@ -51,9 +59,11 @@ def test_realised_rates_fall_within_their_configured_ranges(cfg, many):
             assert b.converted == b.convertible, m.meeting_id
         # one interruption either way is the rounding of a count over a short meeting; and about a tenth of the
         # planned interruptions cannot be placed (a floor turn too short to cut, or the interrupter still talking),
-        # so a meeting drawn near the bottom of the range can land a little under it (m9-e2e: 2 of 20)
+        # so a meeting drawn near the bottom of the range can land a little under it (m9-e2e: 2 of 20). A
+        # presentation's Q&A adds its own interruptions on top.
         slack = 1.5 / max(s.speaker_changes, 1)
-        assert 0.8 * tt.interruption_rate.lo - slack <= s.interruption_share <= tt.interruption_rate.hi + slack, \
+        qa = _qa_interruptions(m, utts) / max(s.speaker_changes, 1)
+        assert 0.8 * tt.interruption_rate.lo - slack <= s.interruption_share <= tt.interruption_rate.hi + slack + qa, \
             m.meeting_id
         # a meeting shorter than planned is thinned to the planned rate; one longer than planned keeps every
         # backchannel, so its rate can only fall below the planned one

@@ -5,7 +5,8 @@ Sampling order (design doc "Meeting config rules"):
    count + who returns to a seat, wall seating by choice), so resampling the room never biases their rates
 2. room, table and positions, redrawn until everyone fits (`fit_resamples` counts the redraws)
 3. NSC speaker per person from the meeting's split, persona attributes matched to that speaker's sheet row
-4. chair and turn shares (Zipf; the chair takes the top share), speaker ids by share rank (S01 = chair)
+4. chair and turn shares (Zipf; the chair takes the top share), speaker ids by share rank (S01 = chair); in large
+   rooms the chair may then move to the head of the table
 5. mic, speakerphone, acoustics, device chain, dynamics
 """
 
@@ -13,9 +14,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer
 
 from ..acoustics import geometry as geo
 from ..artifacts.io import read_model, write_model
@@ -166,8 +168,11 @@ def draw_layout(cfg: RunConfig, plan: Plan, rng: np.random.Generator) -> Layout:
         tl = max(dims.min_length, dims.length_frac.sample(rng) * avail_l, tw)
         if tl > avail_l + 1e-9 or tw > avail_w + 1e-9:
             raise FitError("table does not fit with wall clearance")
-    cx = rng.uniform(clear + tl / 2, L - clear - tl / 2)
-    cy = rng.uniform(clear + tw / 2, W - clear - tw / 2)
+    if rc.table_at_centre:
+        cx, cy = L / 2, W / 2
+    else:
+        cx = rng.uniform(clear + tl / 2, L - clear - tl / 2)
+        cy = rng.uniform(clear + tw / 2, W - clear - tw / 2)
     th = rc.table_height.sample(rng)
     pitch = rc.seat_pitch.sample(rng)
     if shape == "rect":
@@ -363,6 +368,19 @@ def sample_meeting(cfg: RunConfig, splits: SpeakerSplits, meeting_id: str, seed:
     for rank, p in enumerate(ranked, start=1):
         p.sid = f"S{rank:02d}"
 
+    # large rooms: the chair usually takes the head of the table, trading seats with whoever sat there. Seats kept
+    # for presenters who come back are left alone.
+    head = seating.chair_at_head
+    if room_class == "large" and head.p > 0 and head.sample(rng):
+        kept = {ref.index for ref in lay.return_slots.values() if ref.kind == "table"}
+        heads = [i for i in geo.head_slots([s.xy for s in lay.slots], lay.table_center, lay.shape) if i not in kept]
+        if heads and chair.index not in heads:
+            to = heads[int(rng.integers(len(heads)))]
+            sitter = next((p for p in table_people if p.index == to), None)
+            if sitter is not None:
+                sitter.index = chair.index
+            chair.index = to
+
     # mic
     mc = ac.mic
     th = lay.table_h
@@ -375,15 +393,23 @@ def sample_meeting(cfg: RunConfig, splits: SpeakerSplits, meeting_id: str, seed:
         mic = Mic(type="laptop", position=r3((xy[0], xy[1], th + mc.laptop_height.sample(rng))), channels=1,
                   array_geometry=[(0.0, 0.0, 0.0)], near_speaker=laptop_owner.sid)
     else:
-        cx, cy = lay.table_center
-        xy = (cx + mc.centre_offset.sample(rng), cy + mc.centre_offset.sample(rng))
+        # the table mic: at the centre, or (some meetings) in front of the chair, to capture the chair's decisions
+        at_chair = mc.chair_mic.p > 0 and mc.chair_mic.sample(rng)
+        if at_chair:
+            slot = lay.slots[chair.index]
+            xy = geo.offset(lay.seat_xy[chair.index], (-slot.normal[0], -slot.normal[1]),
+                            mc.chair_mic_distance.sample(rng))
+        else:
+            cx, cy = lay.table_center
+            xy = (cx + mc.centre_offset.sample(rng), cy + mc.centre_offset.sample(rng))
         if mc.centre_array.sample(rng):
             k = mc.array_channels
             geom = [r3((mc.array_radius * math.cos(2 * math.pi * i / k), mc.array_radius * math.sin(2 * math.pi * i / k),
                         0.0)) for i in range(k)]
         else:
             k, geom = 1, [(0.0, 0.0, 0.0)]
-        mic = Mic(type="centre", position=r3((xy[0], xy[1], th + mc.centre_height)), channels=k, array_geometry=geom)
+        mic = Mic(type="chair" if at_chair else "centre", position=r3((xy[0], xy[1], th + mc.centre_height)),
+                  channels=k, array_geometry=geom, near_speaker=chair.sid if at_chair else None)
 
     # positions, facing, mouths
     cxy = lay.table_center
@@ -532,6 +558,16 @@ def run_meeting(cfg: RunConfig, splits: SpeakerSplits, meeting_id: str) -> Meeti
     return sample_meeting(cfg, splits, meeting_id, seed, rng, arng)
 
 
+# Settings added after runs were frozen. A frozen config without one reads its default, which reproduces those
+# runs, so the cache key leaves a setting out while it holds that default (with the settings it governs) and the
+# older runs' stage 1 stays a cache hit.
+ADDED_SETTINGS: tuple[tuple[tuple[str, ...], object, tuple[tuple[str, ...], ...]], ...] = (
+    (("room_classes", "table_at_centre"), False, ()),
+    (("seating", "chair_at_head"), {"dist": "bernoulli", "p": 0.0}, ()),
+    (("acoustics", "mic", "chair_mic"), {"dist": "bernoulli", "p": 0.0}, (("acoustics", "mic", "chair_mic_distance"),)),
+)
+
+
 class Stage1Config(BaseModel):
     room_classes: RoomClassesConfig
     seating: SeatingConfig
@@ -540,6 +576,22 @@ class Stage1Config(BaseModel):
     dynamics: DynamicsConfig
     personas: PersonasConfig
     split_mix: Categorical
+
+    @model_serializer(mode="wrap")
+    def _without_unused_additions(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+
+        def parent(path: tuple[str, ...]) -> dict[str, Any]:
+            node = data
+            for k in path[:-1]:
+                node = node[k]
+            return node
+
+        for path, default, governed in ADDED_SETTINGS:
+            if parent(path).get(path[-1]) == default:
+                for drop in (path, *governed):
+                    parent(drop).pop(drop[-1], None)
+        return data
 
 
 class SampleStage:
