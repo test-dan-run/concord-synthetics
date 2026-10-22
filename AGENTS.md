@@ -4,7 +4,7 @@ This file is the starting point for anyone, person or coding agent, who works on
 application is for and what its design commits to, in one place. The detailed documents it summarises are listed
 under "Where the detail lives", and they win when they disagree with this file.
 
-Last updated Oct 22, 2026, with milestone M15 on its branch.
+Last updated Oct 22, 2026, after milestone M15.
 
 ## Purpose
 

@@ -51,7 +51,7 @@ and the Pipeline screen starts, stops and follows the run in a background proces
 `process.log`). Real-backend runs ask for confirmation and list the GPU services they lease. Only one run runs at a
 time. `synthetics viewer --read-only` turns it off. Details in `IMPLEMENTATION_PLAN.md` §5, M14.
 
-## Room layout and the chair mic (M15, branch `room-layout`, Oct 22)
+## Room layout and the chair mic (M15, Oct 22, merged)
 
 New runs put the table at the room centre. In large rooms the chair takes the head of the table 80% of the time,
 and 30% of the time the table mic sits in front of the chair instead of near the centre (`mic.type` "chair"). All

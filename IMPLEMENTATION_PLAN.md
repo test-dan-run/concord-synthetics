@@ -533,7 +533,7 @@ below give what was built and what the exit check found.
 | M12 Viewer API | done | Oct 21 |
 | M13 Viewer UI | done | Oct 21 |
 | M14 Run builder in the viewer | done | Oct 22 (merged) |
-| M15 Room layout and the chair mic | first version, branch `room-layout` | |
+| M15 Room layout and the chair mic | done | Oct 22 (merged) |
 
 M4 to M8 were built in parallel by three agents in separate worktrees, under the rules in `docs/PARALLEL_WORK.md`.
 That file is now history.
@@ -779,7 +779,7 @@ That file is now history.
 ### M15: Room layout and the chair mic
 
 - Goal: rooms laid out as meeting rooms are, and a mic that sometimes sits by the chair to capture the decisions.
-- Built (Oct 22, branch `room-layout`), all in stage 1:
+- Built (Oct 22, merged to `main` the same day), all in stage 1:
   - The table stands at the room centre (`room_classes.table_at_centre`). Fit resamples do not rise: over 2,000
     meetings, 1.1 per small meeting (1.3 before) and none for large ones.
   - In large rooms the chair takes the head of the table with p=0.8 (`seating.chair_at_head`). The head is the
