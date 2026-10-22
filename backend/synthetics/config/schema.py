@@ -198,7 +198,7 @@ class AcousticsConfig(_M):
 
 class TurnTakingConfig(_M):
     zipf: Zipf = Zipf(exponent=1.0)
-    gap: LogNormal = LogNormal(median=0.3, sigma=0.6, cap=2.0)
+    gap: LogNormal = LogNormal(median=0.5, sigma=0.5, cap=2.5)
     overlap_share: float = 0.5  # of transitions
     overlap_lead: Uniform = Uniform(lo=0.3, hi=2.0)  # next turn starts this long before the previous ends
     overlap_max_frac: float = 0.5  # at most half the previous turn

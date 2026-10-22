@@ -30,6 +30,9 @@ Room Config Viewer (read-only API plus web UI) reads any run. What is left is th
     `tests/test_ablation.py`.
   - Turn-taking defaults: 50% of transitions overlap by 0.3 to 2.0 s (was 30% and 0.1 to 1.0 s). Stage 6 now
     stretches leads about 2 times on average instead of 3, and converts 3% of transitions instead of 26%.
+  - Gap between turns: median 0.5 s, sigma 0.5, capped at 2.5 s (was median 0.3 s, sigma 0.6, capped at
+    2 s), because turn changes sounded too quick. Overlap share and stretching are unchanged; meetings come
+    out 2% longer. Like every default, it reaches new runs only.
   - Small faults: fake runs work on the real NSC references; phase time goes to `phase_seconds.jsonl` as it is
     spent, so a killed run keeps it; `SOUND_LIBRARY_DIR` is in `.env.example`.
   - `DESIGN_DOCUMENT.md` has a table of every departure from the first draft, with the text corrected in line.

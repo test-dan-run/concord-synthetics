@@ -23,6 +23,7 @@ has the detail, and `docs/OUTPUT_CONTRACT.md` is the reference for the output fi
 | Caching acoustics | Changing acoustic settings re-runs stages 7–8 | Render settings re-run stages 7–8; a changed sampled acoustic distribution re-runs stages 1, 7 and 8 (run revision 2) | `docs/OUTPUT_CONTRACT.md` |
 | Ablations | Every stage has an on/off flag and parameter overrides | Stages 3, 5 and 7 can be switched off; the others produce what later stages need. Parameters are set in the run config, not per stage | `tests/test_ablation.py` |
 | Turn-taking | 30% of transitions overlap by 0.1–1.0 s | 50% by 0.3–2.0 s, so stage 6 needs less stretching to reach the overlap target | `config/defaults/turn_taking.yaml` |
+| Gap between turns | Log-normal, median 0.3 s, sigma 0.6, capped at 2 s | Median 0.5 s, sigma 0.5, capped at 2.5 s, because turn changes in the M9 mixtures sounded too quick | `config/defaults/turn_taking.yaml` |
 
 ## Background and goals
 
@@ -103,7 +104,7 @@ Turn-taking (stages 1 and 6):
 | Parameter | Default |
 | --- | --- |
 | Turn shares | Zipf distribution, exponent 1.0; the chair takes the top share |
-| Gap between turns | 70% of transitions: log-normal gap, median 0.3 s, capped at 2 s |
+| Gap between turns | 50% of transitions: log-normal gap, median 0.5 s, sigma 0.5, capped at 2.5 s (was median 0.3 s, sigma 0.6, capped at 2 s until Oct 21, 2026; turn changes sounded too quick) |
 | Overlapping transitions | 50% of transitions: next turn starts 0.3–2.0 s before the previous ends, at most half its length (was 30% and 0.1–1.0 s until Oct 21, 2026; stage 6 then had to triple most leads to reach the overlap target) |
 | Overall overlap target | 10–20% of speech time (small rooms), 15–25% (large rooms) |
 | Interruptions | 5–10% of turn changes; interrupted speaker cut off 0.3–1.5 s after the interruption starts |

@@ -705,6 +705,9 @@ That file is now history.
   `tests/test_ablation.py` runs each case to the manifest.
 - Turn-taking defaults: 50% of transitions now overlap, by 0.3 to 2.0 s (was 30% and 0.1 to 1.0 s). Stage 6 now
   stretches leads about 2 times on average instead of 3, and converts 3% of transitions instead of 26%.
+- Gap between turns: log-normal, median 0.5 s, sigma 0.5, capped at 2.5 s (was median 0.3 s, sigma 0.6,
+  capped at 2 s). Turn changes in the M9 mixtures sounded too quick. Re-assembling the `m9-e2e` meetings
+  with both settings gave the same overlap share and stretching, and meetings 2% longer.
 - Small faults: fake runs work on the real NSC references, phase time is written as it is spent, and
   `SOUND_LIBRARY_DIR` and `SYNTHETICS_PORT` are in `.env.example`.
 - `DESIGN_DOCUMENT.md` has a table of every departure from the first draft, with the text corrected in line.

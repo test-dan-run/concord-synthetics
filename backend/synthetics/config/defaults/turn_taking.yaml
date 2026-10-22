@@ -1,7 +1,10 @@
 # Stages 1, 2 (turn plan) and 6. Design doc "Turn-taking".
 turn_taking:
   zipf: {dist: zipf, exponent: 1.0}                # the chair takes the top share
-  gap: {dist: lognormal, median: 0.3, sigma: 0.6, cap: 2.0}
+  gap: {dist: lognormal, median: 0.5, sigma: 0.5, cap: 2.5}
+  # Oct 21, 2026: was median 0.3, sigma 0.6, cap 2.0. In m9-e2e half of the gaps at a speaker change were under
+  # 0.3 s and a quarter under 0.2 s, and the next speaker sounded too quick. Gaps add no voiced or overlapped time,
+  # so the overlap share and the stage 6 stretching are unchanged.
   # Oct 21, 2026: was 0.3 and 0.1-1.0 s, which realised 5-8% overlap against the 10-25% target, so stage 6
   # stretched nearly every lead 3 times and turned a quarter of normal transitions into overlaps. With these, over
   # 120 sampled meetings with real M9 utterance lengths, it stretches 2 times on average and converts 3%.
