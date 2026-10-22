@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
-import { useJobs, useRuns } from "../lib/api";
+import { useJobs, useRuns, useViewer } from "../lib/api";
 import { ago, num } from "../lib/format";
 import { SyntheticsIcon } from "../components/icons";
 import { Bar, cx } from "../components/ui";
@@ -32,6 +32,9 @@ const STAGE_WORDS: Record<string, string> = {
   "5": "Voice checks", "6": "Assembly", "7": "Acoustic simulation", "8": "Labels",
 };
 
+/** A run started from the viewer (process.json); a run started from the CLI is "idle" and falls back to its stages. */
+const PROCESS_WORDS: Record<string, string> = { running: "Running", stopped: "Stopped", finished: "Finished", failed: "Failed" };
+
 /** The run's progress from its status.json files: what is running, and how many meetings are done. */
 function JobsCard({ run }: { run: string }) {
   const { data } = useJobs(run);
@@ -41,8 +44,8 @@ function JobsCard({ run }: { run: string }) {
   return (
     <section aria-label="Run progress" className="mt-auto flex flex-col gap-2 p-3 border border-track rounded-md text-xs">
       <span className="flex items-center gap-2">
-        <span aria-hidden className={cx("size-2 rounded-full", data.active ? "bg-primary animate-pulse" : "bg-subtle")} />
-        {data.active ? `Running · stage ${stage}` : "No stage running"}
+        <span aria-hidden className={cx("size-2 rounded-full", data.active || data.process === "running" ? "bg-primary animate-pulse" : "bg-subtle")} />
+        {data.active ? `Running · stage ${stage}` : (PROCESS_WORDS[data.process] ?? "No stage running")}
       </span>
       <Bar value={done} max={data.meetings || 1} />
       <span className="text-[11px] text-muted">
@@ -58,7 +61,7 @@ function RunSelect({ run }: { run: string }) {
   const { data } = useRuns();
   const nav = useNavigate();
   const loc = useLocation();
-  const section = loc.pathname.includes("/distributions") ? "distributions" : "meetings";
+  const section = ["distributions", "pipeline"].find((x) => loc.pathname.includes(`/${x}`)) ?? "meetings";
   return (
     <label className="flex flex-col gap-1.5 px-2.5 text-xs text-muted">
       Active run
@@ -72,14 +75,24 @@ function RunSelect({ run }: { run: string }) {
             {r.id}
           </option>
         ))}
-        {!data?.some((r) => r.id === run) && <option value={run}>{run}</option>}
+        {run && !data?.some((r) => r.id === run) && <option value={run}>{run}</option>}
+        {!run && <option value="">No run</option>}
       </select>
     </label>
   );
 }
 
+/** The run in the URL, or on screens outside a run (New dataset) the most recently updated one. */
+function useActiveRun(): string {
+  const { run } = useParams();
+  const { data } = useRuns();
+  if (run) return run;
+  return [...(data ?? [])].sort((a, b) => b.updated - a.updated)[0]?.id ?? "";
+}
+
 export function Shell() {
-  const { run = "" } = useParams();
+  const run = useActiveRun();
+  const viewer = useViewer();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
@@ -107,10 +120,18 @@ export function Shell() {
             </button>
           </div>
           <div id="nav-groups" className={cx("flex-col gap-6 flex-1", open ? "flex" : "hidden lg:flex")}>
-            <Group title="Room viewer">
-              <Item to={`${base}/meetings`}>Meetings</Item>
-              <Item to={`${base}/distributions`}>Distributions</Item>
-            </Group>
+            {run && (
+              <Group title="Room viewer">
+                <Item to={`${base}/meetings`}>Meetings</Item>
+                <Item to={`${base}/distributions`}>Distributions</Item>
+              </Group>
+            )}
+            {viewer.data && !viewer.data.read_only && (
+              <Group title="Generate">
+                <Item to="/new">New dataset</Item>
+                {run && <Item to={`${base}/pipeline`}>Pipeline</Item>}
+              </Group>
+            )}
             <Group title="Run">
               <RunSelect run={run} />
             </Group>

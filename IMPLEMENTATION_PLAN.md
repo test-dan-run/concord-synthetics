@@ -532,6 +532,7 @@ below give what was built and what the exit check found.
 | M11 Hardening | done | Oct 21 |
 | M12 Viewer API | done | Oct 21 |
 | M13 Viewer UI | done | Oct 21 |
+| M14 Run builder in the viewer | first version, branch `run-builder` | |
 
 M4 to M8 were built in parallel by three agents in separate worktrees, under the rules in `docs/PARALLEL_WORK.md`.
 That file is now history.
@@ -745,6 +746,31 @@ That file is now history.
      instead of scaling).
 - Exit: `just viewer-test` passes (14 tests), and the three screens were compared by screenshot with
   `assets/mockups/png/*` at 1440 px and 390 px wide.
+
+### M14: Run builder in the viewer
+
+- Goal: create a dataset from the viewer, choosing the parameters in a form, and run it without a terminal.
+- Built (Oct 21, branch `run-builder`):
+  - `viewer/builder.py`: `GET /api/defaults` (the complete default config), `POST /api/preview` (stage 1 in
+    memory for a draft, up to 500 meetings, with the sampler checks; a meeting is a function of the seed, its id
+    and the config, so these are the meetings the run will get), `POST /api/runs` (`init-run`), and
+    `GET /api/runs/{id}/process`, `POST .../start` and `POST .../stop`. A draft is the run id, meeting count
+    and seed, dotted overrides and a YAML overlay, applied as `--set` and `--config` apply them. Validation
+    errors come back per field.
+  - `orchestrator/background.py`: Start runs the CLI's `run` in its own session, logging to `process.log` and
+    recording itself in `process.json` (`RunProcess`); the process writes how it ended. Stop sends SIGINT, so
+    the GPU lease releases its services, and Start again resumes. One run at a time across all runs. A run on
+    real backends needs `confirm`, which the UI asks for in a dialog listing each phase's services. The jobs
+    route no longer reports a stopped run as active.
+  - Frontend: New dataset (`/new`; curated fields in `lib/draft.ts`, starting from the defaults or from any run's
+    frozen config, with a debounced preview) and Pipeline (`/runs/<run>/pipeline`), under a Generate group in
+    the sidebar. `synthetics viewer --read-only` leaves the builder out.
+- Tests: `tests/test_viewer_builder.py` (preview equals what stage 1 writes, validation, create, confirm, one
+  at a time, stop, how the process ended, read-only mode) and `frontend/src/lib/draft.test.ts`. A fake run was
+  also created, started and finished from the UI in a headless browser.
+- Not done yet: a run cannot be deleted or renamed from the UI, a stop while `stack.py up` is still starting
+  services can leave them up (the same as Ctrl-C in a terminal), and the time estimate is a single ratio from
+  `m9-e2e`.
 
 ### After M13: performance backlog (not scheduled)
 

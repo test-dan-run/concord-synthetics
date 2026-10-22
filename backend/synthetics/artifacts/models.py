@@ -1,4 +1,4 @@
-"""Artifact models besides meeting.json: script, script validation, status, speaker splits."""
+"""Artifact models besides meeting.json: script, script validation, status, speaker splits, run process."""
 
 from __future__ import annotations
 
@@ -145,3 +145,22 @@ class SpeakerSplits(_A):
 
     def in_split(self, split: str) -> list[str]:
         return sorted(s for s, v in self.speakers.items() if v.split == split)
+
+
+# ---------------------------------------------------------------- process.json (a run started from the viewer)
+
+ProcessState = Literal["running", "finished", "failed", "stopped"]
+
+
+class RunProcess(_A):
+    """The background `run` the viewer started. Only that process and the viewer write it; the pipeline never
+    reads it, so it is not part of any cache key."""
+
+    schema_version: Literal["1"] = "1"
+    pid: int
+    state: ProcessState
+    live: bool  # leases GPU services (backends.mode aicore or record)
+    started_at: str
+    ended_at: str | None = None
+    exit_code: int | None = None
+    error: str | None = None

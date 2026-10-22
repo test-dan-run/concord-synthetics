@@ -40,6 +40,14 @@ Room Config Viewer (read-only API plus web UI) reads any run. What is left is th
   before the change is `DESIGN_SYSTEM.md.bak` beside it). Checked by screenshot against the mock-ups at
   1440 px and 390 px, and by keyboard.
 
+## Run builder (M14, branch `run-builder`, Oct 21)
+
+The viewer can now create and run a dataset: Generate, then New dataset, gives a form over the common settings
+plus a YAML overlay, with a live stage 1 preview of the meetings the run will get; Create writes the frozen config,
+and the Pipeline screen starts, stops and follows the run in a background process (`process.json`,
+`process.log`). Real-backend runs ask for confirmation and list the GPU services they lease. Only one run runs at a
+time. `synthetics viewer --read-only` turns it off. Details in `IMPLEMENTATION_PLAN.md` §5, M14.
+
 ## Decisions waiting for you
 
 1. **"(mm) X." backchannels.** They are the largest cause of utterances kept after failing every check: 29 of

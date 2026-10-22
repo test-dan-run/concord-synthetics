@@ -1,6 +1,6 @@
 // Small building blocks in the AeroAudio style: buttons, panels, chips, selects, status pills.
 
-import type { ButtonHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import { type ButtonHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 export function cx(...c: (string | false | null | undefined)[]): string {
@@ -218,6 +218,73 @@ export function Toggle({ options, value, onChange, label }: { options: { value: 
           {o.label}
         </button>
       ))}
+    </span>
+  );
+}
+
+/** A small "i" button with an explanation. It opens on hover, on keyboard focus and on click (touch screens), and
+ *  closes on Escape or when the pointer and focus leave. The text is the button's accessible description, so a
+ *  screen reader reads it whether or not it is shown. */
+export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
+  const id = useId();
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [shift, setShift] = useState(0);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const tip = useRef<HTMLSpanElement>(null);
+  const open = hover || focus || pinned;
+  // keep the tip 8 px inside the viewport: it starts at the button and slides left as far as it has to
+  useLayoutEffect(() => {
+    if (!open || !tip.current || !anchor.current) return;
+    const left = anchor.current.getBoundingClientRect().left;
+    const width = tip.current.getBoundingClientRect().width;
+    const over = Math.min(0, window.innerWidth - 8 - (left + width)); // negative when it would pass the right edge
+    setShift(Math.max(over, 8 - left)); // but never past the left edge
+  }, [open]);
+  return (
+    <span ref={anchor} className="relative inline-flex" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <button
+        type="button"
+        aria-label={`About ${label}`}
+        aria-describedby={id}
+        aria-expanded={open}
+        onClick={(e) => {
+          e.preventDefault();
+          setPinned((v) => !v);
+        }}
+        onFocus={() => setFocus(true)}
+        onBlur={() => {
+          setFocus(false);
+          setPinned(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setHover(false);
+            setPinned(false);
+            setFocus(false);
+          }
+        }}
+        className={cx(
+          "inline-flex items-center justify-center size-4 rounded-full border text-[10px] leading-none font-semibold cursor-help bg-transparent p-0",
+          open ? "border-focus text-focus" : "border-line text-muted hover:text-fg hover:border-muted",
+        )}
+      >
+        i
+      </button>
+      <span
+        ref={tip}
+        id={id}
+        role="tooltip"
+        className={cx(
+          "absolute top-full mt-1.5 z-30 w-[min(320px,calc(100vw-32px))] bg-active border border-line rounded-md px-3 py-2 text-xs text-fg font-normal leading-snug shadow-lg normal-case tracking-normal text-left",
+          "left-0",
+          !open && "hidden",
+        )}
+        style={{ transform: shift ? `translateX(${shift}px)` : undefined }}
+      >
+        {children}
+      </span>
     </span>
   );
 }

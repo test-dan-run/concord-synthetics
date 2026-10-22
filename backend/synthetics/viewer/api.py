@@ -1,10 +1,12 @@
-"""The Room Config Viewer's read-only API over `runs/<run_id>/` (M12), and the built frontend.
+"""The Room Config Viewer's API over `runs/<run_id>/` (M12), and the built frontend.
 
 A browser cannot read the local disk, so this layer lists runs and serves their files. It adds no fields of its
-own: every number the viewer shows is either in a pipeline artifact or computed in the browser. There are no
-write routes. Run ids, meeting ids and artifact names are checked against what is on disk and a whitelist before
-any path is built, so no request reaches a file outside a run.
+own: every number the viewer shows is either in a pipeline artifact or computed in the browser. The routes here
+only read. The run builder's routes (`builder.py`: preview, create, start, stop) are the only ones that write, and
+`read_only` leaves them out. Run ids, meeting ids and artifact names are checked against what is on disk and a
+whitelist before any path is built, so no request reaches a file outside a run.
 
+    GET /api/viewer                                 whether the run builder is on
     GET /api/runs                                   id, meeting counts, seed, config hash
     GET /api/runs/{id}/config                       config.yaml as JSON
     GET /api/runs/{id}/manifest                     manifest.jsonl as a JSON array
@@ -34,6 +36,7 @@ from ..artifacts.models import MeetingStatus
 from ..artifacts.paths import MeetingPaths, RunPaths
 from ..config.loader import config_hash, read_yaml
 from ..config.schema import StageId
+from ..orchestrator.background import read_process
 
 RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 MEETING_ID = re.compile(r"^m-\d{6}$")
@@ -150,13 +153,24 @@ def _matches(s: dict, *, room_class: str | None, split: str | None, min_speakers
             and (not wall or "wall" in kinds))
 
 
-def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None) -> FastAPI:
+def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None, *, read_only: bool = False,
+               start=None) -> FastAPI:
+    """`read_only` leaves out the run builder; `start` replaces the background launcher (tests)."""
     from ..orchestrator.run import APP_ROOT
     from ..orchestrator.run import runs_root as default_root
 
     runs = Runs(runs_root or default_root())
-    app = FastAPI(title="Synthetics viewer", version="0.1.0")
+    app = FastAPI(title="Synthetics viewer", version="0.2.0")
     app.state.runs = runs
+
+    @app.get("/api/viewer")
+    def viewer_info() -> dict:
+        return {"read_only": read_only, "runs_root": str(runs.root)}
+
+    if not read_only:
+        from . import builder
+
+        builder.add_routes(app, runs, **({"start": start} if start else {}))
 
     @app.get("/api/runs")
     def list_runs() -> list[dict]:
@@ -232,8 +246,13 @@ def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None)
                     if t and (latest is None or t > latest):
                         latest = t
         running = [k for k, v in per_stage.items() if v.get("running")]
+        # A run started from the viewer says whether its process is alive; a stopped one leaves its interrupted
+        # stage marked running. A run started from the CLI is "idle" here and judged by its stages alone.
+        process = read_process(rp.run_dir).state
+        active = bool(running) and process in ("running", "idle")
         return {"run": run_id, "meetings": len(rp.meeting_ids()), "states": states, "stages": per_stage,
-                "running_stages": running, "active": bool(running), "last_update": latest}
+                "running_stages": running if active else [], "active": active, "last_update": latest,
+                "process": process}
 
     @app.get("/api/runs/{run_id}/export")
     def run_export(run_id: str, room_class: str | None = None, split: str | None = None,
@@ -271,5 +290,8 @@ def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None)
 
 
 def app() -> FastAPI:
-    """uvicorn factory: `uvicorn --factory synthetics.viewer.api:app`."""
-    return create_app()
+    """uvicorn factory: `uvicorn --factory synthetics.viewer.api:app`. SYNTHETICS_READ_ONLY=1 turns the run
+    builder off."""
+    import os
+
+    return create_app(read_only=os.environ.get("SYNTHETICS_READ_ONLY", "").lower() in ("1", "true", "yes"))

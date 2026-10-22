@@ -36,7 +36,9 @@ runs/<run_id>/
 ```
 
 The run root also holds `run_report.json` (drops and failures, time per phase, split disjointness; written by
-`synthetics report`) and `voice_report.json` (phase C rates; written by `synthetics voice-report`).
+`synthetics report`) and `voice_report.json` (phase C rates; written by `synthetics voice-report`). A run started
+from the viewer also has `process.json` (the background process: pid, state, start and end, exit code) and
+`process.log` (its output). Those two are for the viewer only and are not part of the output contract.
 
 A meeting is complete when its `status.json` shows `pass` for stage 8. Only complete meetings appear in
 `manifest.jsonl`. The manifest's `files` map gives every path relative to the run directory, so a reader never
