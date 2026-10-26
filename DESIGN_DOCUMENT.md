@@ -3,19 +3,19 @@
 Oct 18, 2026 · updated Oct 21, 2026 · @Dan
 
 This is the design as first drafted, with the places where the build departs from it corrected in line. The
-section "Changes since the first draft" lists every departure and where it is recorded. `IMPLEMENTATION_PLAN.md`
-has the detail, and `docs/OUTPUT_CONTRACT.md` is the reference for the output files.
+section "Changes since the first draft" lists every departure and where it is recorded, and
+`docs/OUTPUT_CONTRACT.md` is the reference for the output files.
 
 ## Changes since the first draft
 
 | Area | First draft | As built | Where |
 | --- | --- | --- | --- |
-| Model services | Docker containers with custom routes (`/synthesize`, `/transcribe`, `/embed`, `/align`) | Platform services called through `aicore`, on the platform's contracts: OpenAI chat and transcription for LLMs and ASR, OIP v2 for TTS, speaker embeddings, MOS and alignment | Plan §1, §4.2 |
-| Weights | A local volume per container | The platform's weights store, `$AI_ASSETS`, shared by every app | Plan §1 |
-| GPU lease | The orchestrator starts and stops containers | The platform's `stack.py up` and `down`, which check the VRAM budget and health | Plan §1 |
-| NSC voices and splits | Speakers assigned to splits once per run | A fixed pool of 175 NSC Part 3 speakers with fixed splits (50 train, 25 dev, 100 test) in `data/nsc_part3_reference_speakers.csv` | Plan §4.3 |
-| Voice assignment | Stage 4 | Stage 1 assigns each person an NSC speaker from the meeting's split, so personas match the voice; stage 4 may swap it | Plan §4.3 |
-| Execution | A single-machine runner, later a job queue | Sequential: one meeting and one request at a time. Speed-ups wait for the performance backlog | Plan §3.5, §5 |
+| Model services | Docker containers with custom routes (`/synthesize`, `/transcribe`, `/embed`, `/align`) | Platform services called through `aicore`, on the platform's contracts: OpenAI chat and transcription for LLMs and ASR, OIP v2 for TTS, speaker embeddings, MOS and alignment | `backends/aicore_impl.py`, `config/defaults/backends.yaml` |
+| Weights | A local volume per container | The platform's weights store, `$AI_ASSETS`, shared by every app | the platform's `services/*.yaml` |
+| GPU lease | The orchestrator starts and stops containers | The platform's `stack.py up` and `down`, which check the VRAM budget and health | `orchestrator/lease.py` |
+| NSC voices and splits | Speakers assigned to splits once per run | A fixed pool of 175 NSC Part 3 speakers with fixed splits (50 train, 25 dev, 100 test) in `data/nsc_part3_reference_speakers.csv` | `data/nsc_part3_reference_speakers.csv` |
+| Voice assignment | Stage 4 | Stage 1 assigns each person an NSC speaker from the meeting's split, so personas match the voice; stage 4 may swap it | `stages/s1_sample.py`, `stages/s4_voice.py` |
+| Execution | A single-machine runner, later a job queue | Sequential: one meeting and one request at a time. Speed-ups are not scheduled | `orchestrator/scheduler.py` |
 | Phase B | Both judges load together | The judges do not fit together on the 5090, so B runs the primary judge and B2 the tie-breaker on borderline scripts | `config/defaults/phases.yaml` |
 | Singlish ASR fallback | MERaLiON in phase C for utterances the primary ASR fails | Left out of phase C (it left about 1 GB of VRAM headroom and the bake-off never needed it). A failing utterance is re-synthesised, so "ASR-limited" is always zero | `docs/M5_EXIT.md` |
 | Utterances that never pass | Re-synthesised up to N times, then the meeting fails | Kept and listed (`voice.on_exhausted: keep_flagged`; 1.3% of utterances in the M9 run) | `docs/M5_EXIT.md` |
