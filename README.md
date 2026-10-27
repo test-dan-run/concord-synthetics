@@ -8,7 +8,7 @@ for the files a run hands over.
 
 ```bash
 uv sync
-cp .env.example .env        # SYNTHETICS_RUNS, PLATFORM_DIR, NSC_DIR, NSC_REFS_DIR, AI_HOST, NO_EVICT
+cp .env.example .env        # SYNTHETICS_RUNS, PLATFORM_DIR, NSC_DIR, NSC_REFS_DIR, SOUND_LIBRARY_DIR, AI_HOST, NO_EVICT
 just test                   # unit tests, no GPU or platform needed
 ```
 
@@ -27,15 +27,15 @@ phase is a lease through `platform/tools/stack.py up/down`.
 ## Running
 
 ```bash
-just init m3-50 50 2026         # runs/m3-50: config.yaml, speaker_splits.json, meeting folders
-just run m3-50                  # stage 1, then rounds of A (scripts) -> B (judge) -> B2 (tie-break)
-just status m3-50               # state counts per stage, rounds to pass, regeneration rate
-just stage 2 m3-50 m-000001     # one stage on one meeting (services already up)
+just init d-50 50 2026          # runs/d-50: config.yaml, speaker_splits.json, meeting folders
+just run d-50                   # stage 1, rounds of A, B and B2, then C, stages 6 and 7, then D
+just status d-50                # state counts per stage, rounds to pass, regeneration rate
+just stage 2 d-50 m-000001      # one stage on one meeting (services already up)
 ```
 
 Every command is idempotent: a stage is skipped when status.json holds a pass with the same cache key
-(stage version, config slice, input hashes). Set `--set backends.mode=fake` on `init-run` for a run with fake
-backends.
+(stage version, config slice, input hashes), and `synthetics resume -r <run>` continues after any stop. Set
+`--set backends.mode=fake` on `init-run` for a run with fake backends and no GPU.
 
 ## Room Config Viewer
 
@@ -51,39 +51,26 @@ just viewer                     # http://127.0.0.1:8610 (SYNTHETICS_PORT); reads
 just viewer-dev                 # API with reload + Vite dev server on http://127.0.0.1:5174
 ```
 
-## Milestone checks
+## Checks
 
-- **M1** `just sampler-report 1000`: stage 1 rates against every configured target (exits 1 on a miss).
-  `tests/test_sampler.py` runs the same checks on 10,000 meetings, plus geometry properties and
+- **Sampler.** `just sampler-report 1000` compares stage 1 rates with every configured target and exits 1 on a
+  miss. `tests/test_sampler.py` runs the same checks on 10,000 meetings, plus geometry properties and
   byte-identical `meeting.json` for the same seed.
-- **M2** `just nsc-validate`, `just nsc-extract`, `just nsc-clean`, `just nsc-report`. Data goes to
-  `/home/user/code/datasets/nsc-part3-refs/{raw,clean}` (never into the app).
-- **M3** `just run <run>` then `just status <run>`. Judge calibration is file-based:
-  `just judge-set <run>` writes `runs/<run>/judge_sets/judge_set_1/` (rating sheet, scripts, instructions);
-  `just fit-judge <filled sheet>` fits `thresholds.judge_pass` / `judge_band` into a YAML overlay for
-  `init-run --config`.
-- **M10** `just viewer-contract <run>`: every field of the UI data contract, on every meeting
+- **NSC references.** `just nsc-validate`, `just nsc-extract`, `just nsc-clean` and `just nsc-report` build the
+  reference clips in `/home/user/code/datasets/nsc-part3-refs/{raw,clean}` (never in the app). Cleanup cleans the
+  12 best-ranked candidates per speaker (by length and markup) and keeps 5; `just nsc-clean --max-candidates 0`
+  cleans every candidate, about 26,000 clips and 13 hours on CPU.
+- **Judge calibration.** `just judge-set <run>` writes a rating sheet, scripts and instructions to
+  `runs/<run>/judge_sets/judge_set_1/`, and `just fit-judge <filled sheet>` fits `thresholds.judge_pass` and
+  `judge_band` into a YAML overlay for `init-run --config`.
+- **Voice models.** `just bakeoff` clones real NSC speakers and measures similarity, ASR error, MOS and
+  separability; `just calibrate-sv` fits the SV thresholds into `config/sv_thresholds.yaml`.
+- **Viewer data.** `just viewer-contract <run>` checks every field the viewer reads, on every meeting
   (`tests/test_viewer_contract.py` runs it on a fake run, and on `runs/m9-e2e` when present).
-- **M11** `tests/test_ablation.py` switches stages 3, 5 and 7 off and runs to the manifest; the acoustics
-  cache test in `tests/test_post.py` covers run revision 2.
-- **M12** `tests/test_viewer_api.py`: every route, the whitelist, traversal attempts, no write routes.
-- **M13** `just viewer-test` (vitest), then look at the three screens against `assets/mockups/png/*`.
-
-## Departures from the plan, and why
-
-- **Phase B is split into B and B2.** Gemma-SEA-LION NVFP4 alone is 19.5 GB of weights, so it cannot share the
-  GPU with Apertus under `util_limit` 0.93 (the plan's ~0.58 estimate was low). Stage 3 runs the primary judge
-  in B and defers borderline scripts; B2 loads Apertus and finishes them, reusing the primary judgement.
-- **The generator is NVFP4A16, not W4A4 NVFP4.** AI Singapore publishes no 4-bit Qwen-SEA-LION. W4A4 needs
-  activation calibration on a loaded 52 GB model, which does not fit in this machine's 31 GB of RAM; the
-  data-free path (`experiments/quantize-qwen-sea-lion-nvfp4`) supports weight-only FP4.
-- **Reference ranking uses DNSMOS** (`ref_quality` role), a noise and reverberation score that fits the
-  cleanup job. UTMOS (`quality`) stays the phase C scorer for TTS output (M4).
-- **Stage 2 plans turns before writing them.** A turn plan fixes speakers (Zipf shares, exact counts),
-  interaction types (exact overlap and interruption counts), the presentation segment, backchannels and side
-  conversations; the generator writes the words chunk by chunk. Persona prompts are saved verbatim.
-- **Cleanup cleans the 12 best-ranked candidates per speaker** (by length and markup), not every candidate:
-  every candidate is ~26,000 clips (~13 h on CPU). `just nsc-clean --max-candidates 0` cleans all of them.
+  `tests/test_viewer_api.py` covers every route, the whitelist and traversal attempts.
+- **Ablations and caching.** `tests/test_ablation.py` switches stages 3, 5 and 7 off and runs to the manifest;
+  `tests/test_post.py` checks that changing sampled acoustics re-runs only stages 1, 7 and 8.
+- **Viewer UI.** `just viewer-test` (vitest), then compare the screens with `assets/mockups/png/*`.
 
 ## Licences to carry into the dataset card
 
@@ -91,4 +78,5 @@ just viewer-dev                 # API with reload + Vite dev server on http://12
   the bake-off only).
 - **WavLM-Large ECAPA:** CC BY-SA 3.0. It is only used to check our own audio.
 - **ESC-50 noise clips:** CC BY-NC, non-commercial only.
+- **DEMAND room-tone beds:** CC BY-SA 3.0.
 - **NSC:** the IMDA licence covers the reference voices and the non-lexical clips cut from them.

@@ -1,16 +1,16 @@
-# Room Config Viewer — UI Design
+# Room Config Viewer UI design
 
-Oct 18, 2026 · @Dan
+Owner: @Dan
 
 ## Purpose and goals
 
-The Room Config Viewer is the Room viewer section of the Synthetics product: a web UI for inspecting what the synthetic Singapore meeting pipeline generated, from the sampled rooms, positions, mics and personas of each meeting to whether the whole run matches its configured distributions.
+The Room Config Viewer is the web UI of Synthetics: it shows what the synthetic Singapore meeting pipeline generated, from the sampled rooms, positions, mics and personas of each meeting to whether the whole run matches its configured distributions, and it can create and run new datasets.
 
-Two product decisions shape everything below:
+Three product decisions shape everything below:
 
 - **Part of Synthetics, outside Concord.** The viewer ships in the Synthetics app under its own name and icon, built on the AeroAudio design system so it looks and behaves like the other workspace tools.
 - **Read-only room viewer.** The room viewer reads pipeline artifacts from `runs/<run_id>/` and never writes back. It has no resample, regenerate or edit actions; its one action is exporting a manifest slice.
-- **A separate run builder (added Oct 21, 2026, M14).** Creating and running a dataset lives in its own sidebar group, Generate, so the room viewer's screens stay read-only. The builder only creates new runs and starts or stops them; it never edits a frozen config or a stage's output. `synthetics viewer --read-only` leaves it out.
+- **A separate run builder.** Creating and running a dataset lives in its own sidebar group, Generate, so the room viewer's screens stay read-only. The builder only creates new runs and starts or stops them; it never edits a frozen config or a stage's output. `synthetics viewer --read-only` leaves it out.
 
 Goals:
 
@@ -36,11 +36,17 @@ Two groups use the viewer: the pipeline team, who build and tune the generator, 
 
 ## Information architecture and navigation
 
-The viewer has three screens inside the AeroAudio app shell of Synthetics: a sidebar headed by the Synthetics name and icon, for navigation and run selection, and a main column of stacked panels.
+The viewer has five screens inside the AeroAudio app shell of Synthetics: a sidebar headed by the Synthetics name and icon, for navigation and run selection, and a main column of stacked panels.
 
-&#91;embedded content: screens and navigation · 3 screens\]
+| Screen | Route | Group |
+| --- | --- | --- |
+| 1. Meeting browser | `/runs/<run>/meetings` | Room viewer |
+| 2. Meeting layout detail | `/runs/<run>/meetings/<meeting>` | Room viewer |
+| 3. Sampler distributions | `/runs/<run>/distributions` | Room viewer |
+| 4. New dataset | `/new` | Generate |
+| 5. Pipeline | `/runs/<run>/pipeline` | Generate |
 
-The sidebar links to Meetings and Distributions, then under Generate to New dataset and Pipeline (screens 4 and 5, left out in read-only mode), and holds the active-run select plus a jobs card for any batch in progress. Changing the run reloads every screen for that run. Meeting cards open the detail screen; crumbs lead back, and Previous and Next step through meetings in the browser's current filter and sort order.
+`/` opens the most recent run. The sidebar links to Meetings and Distributions, then under Generate to New dataset and Pipeline (left out in read-only mode), and holds the active-run select plus a jobs card for any batch in progress. Changing the run reloads every screen for that run. Meeting cards open the detail screen; crumbs lead back, and Previous and Next step through meetings in the browser's current filter and sort order.
 
 ## Screen 1: Meeting browser
 
@@ -107,7 +113,7 @@ The persona panel explains why a speaker sounds the way they do, by putting the 
 
 - **Header:** persona ID and role, generator model, prompt template version, the judge's persona-consistency score, and a persona select.
 - **Persona prompt:** the exact prompt stage 2 sent for this speaker, read from its saved prompt file and shown as is, never rebuilt from a template, in a scrolling monospace block, with a Copy prompt button. Its first line names the speaker's position (table seat, wall seat, presenter or remote), and presenters' and wall-seated speakers' settings are spelled out. It covers the meeting brief, profile (seniority, verbosity, L1, code-switching level, turn-share target), stance in this meeting and output rules.
-- **Sample from script.json:** a short excerpt of turns around this persona with time, speaker, interaction type and text. The persona's own turns are highlighted; overlap starts carry the overlap hatch, and presenters' monologue turns are typed presentation. A text / text\_norm toggle switches between the readable transcript and the normalised form used for WER.
+- **Sample from script.json:** a short excerpt of turns around this persona's longest turn, with time (from `timeline.json`), speaker, interaction type and text. The persona's own turns are highlighted; overlap starts carry the overlap hatch, and presenters' monologue turns are typed presentation. A text / text\_norm toggle switches between the readable transcript and the normalised form used for WER.
 - **Footer:** turns shown, how many are this persona's, the persona's turn target, and Open full script.
 
 ### Speakers and positions table
@@ -146,7 +152,7 @@ Charts sit under three group headings: Rooms and acoustics (stages 1 and 7), Pos
 
 ## Screen 4: New dataset (run builder)
 
-Added Oct 21, 2026 (M14). One page at `/new`: a form on the left and a sticky preview on the right, stacked below `xl`.
+One page at `/new`: a form on the left and a sticky preview on the right, stacked below `xl`.
 
 1. **Run.** Start from the defaults or from an existing run, run id (suggested as `d-<date>`, checked against the runs on disk), meetings, seed, and backends (real models on the GPU, or fake with no GPU). Starting from a run copies its frozen config: the form fields fill in, and every other setting that differs from the defaults becomes a line of the YAML overlay. The new run always takes the current revision.
 2. **Curated settings,** grouped as rooms and speakers, turn-taking, seating and participants, acoustics and device, splits, and stage switches (3, 5 and 7). Ranges are two numbers, probabilities a slider with a number in %, weights one number per category with its normalised share. A field that differs from the default says "changed". Every setting, the run fields and the YAML overlay included, has an info button beside its label. On hover, keyboard focus or a tap it explains what the setting is and why it matters for the training data (the text lives with the field in `lib/draft.ts`). Escape closes it, and it stays inside the screen at phone width.
@@ -160,7 +166,7 @@ Added Oct 21, 2026 (M14). One page at `/new`: a form on the left and a sticky pr
 
 ## Visual design
 
-The viewer uses AeroAudio throughout: dark slate only, Inter for text, JetBrains Mono with tabular figures for every number, ID and unit, flat surfaces with 1 px borders, and the standard Sidebar, PageHeader, Panel, MetricTile, Toggle, Chip, Tag, Fact and SortableTable components. It adds two things to the system: a categorical palette and the Synthetics icon, both below.
+The viewer uses AeroAudio throughout: dark slate only, Inter for text, JetBrains Mono with tabular figures for every number, ID and unit, flat surfaces with 1 px borders, and the standard Sidebar, PageHeader, Panel, MetricTile, Toggle, Chip, Tag, Fact and SortableTable components. Two parts of the system exist for the viewer: the categorical palette and the Synthetics icon, both below.
 
 Colour carries meaning only where the system assigns it:
 
@@ -177,7 +183,7 @@ Colour carries meaning only where the system assigns it:
 
 ### Categorical palette
 
-AeroAudio gains a categorical palette, `color-cat-1` to `color-cat-6`, for any chart or drawing whose series are categories rather than status. Assign slots in this fixed order and never cycle them; a seventh category folds into Other or a small multiple.
+AeroAudio has a categorical palette, `color-cat-1` to `color-cat-6`, for any chart or drawing whose series are categories rather than status. Assign slots in this fixed order and never cycle them; a seventh category folds into Other or a small multiple.
 
 | Token | Hue | Value |
 | --- | --- | --- |
@@ -190,7 +196,7 @@ AeroAudio gains a categorical palette, `color-cat-1` to `color-cat-6`, for any c
 
 On `color-panel` all six sit inside the dark-mode lightness band (L 0.48–0.67), pass 3:1 contrast, and keep adjacent pairs apart for colour-blind readers (worst ΔE 8.4) and full-colour readers (worst ΔE 19.3). The first three also separate in any pairing, so scatter plots and small multiples cap at three categories. Aqua sits near `color-good`, so categories never stand in for status, and status always carries its word.
 
-Individual speakers are still not coloured: meetings reach 20 speakers, beyond any palette, so they are identified by number and highlighted by selection.
+Individual speakers are never coloured: meetings reach 20 speakers, beyond any palette, so they are identified by number and highlighted by selection.
 
 Plan drawing conventions:
 
@@ -206,38 +212,32 @@ Plan drawing conventions:
 
 Synthetics has its own mark, separate from the Concord icon set, so the product reads as its own app. It follows AeroAudio's icon rules: a 24-unit grid, 1.8 stroke, round caps and joins, no fill, drawn in `currentColor`.
 
-&#91;embedded content: Synthetics icon · grid, sizes and meaning\]
-
-In the sidebar it sits at 22 px in `color-primary` beside the Synthetics name, as the AeroAudio logo slot specifies. Other icons in the viewer stay as text labels (Previous, Next) until a Synthetics icon set exists.
+The mark is `assets/icon.svg`. In the sidebar it sits at 22 px in `color-primary` beside the Synthetics name, as the AeroAudio logo slot specifies. Other icons in the viewer stay as text labels (Previous, Next) until a Synthetics icon set exists.
 
 ## Data contract
 
-The viewer reads the pipeline's storage layout directly and computes everything else in the browser; it needs no new backend fields except where noted.
+The viewer reads the pipeline's files through the API (`backend/synthetics/viewer/api.py`), which serves only a whitelist of JSON files and the persona prompts, never audio. Everything derived is computed in the browser.
 
 | Artifact | Read by | Fields used |
 | --- | --- | --- |
-| `manifest.jsonl` | Browser, Distributions | Meeting ID, room class, speaker count, wall-seated and presenter counts, per-speaker position type, mic type, hybrid, RT60, SNR, split, tags |
-| `config.yaml` | Distributions | Room-class ratio, per-class ranges for speakers, RT60 and SNR, hybrid probabilities |
-| `meeting.json` | Browser cards, Detail | Room dimensions, front wall and screen, table shape and size, seat positions and mouth heights, each speaker's position type (table, wall, presenter), wall-seat placement and reason (overflow or by choice), presenter spot, drift and return seat, presentation segment times, mic type and position, surfaces, noise, device chain, persona fields per seat, turn shares |
-| `status.json` | Browser, Detail | Per-stage status, timings, retry and resample counts |
-| `script.json` | Detail persona panel | Turns with speaker, interaction type, `text`, start time |
+| `manifest.jsonl` | Browser, Distributions, Detail | Meeting ID, room class, speaker count, `position_counts`, `sampled` values, split, `speakers` (position type, NSC voice after any swap), `turn_taking` (overlap share, backchannels per minute, interruption share and raw counts), `acoustic` |
+| `config.yaml` | Distributions, New dataset | Room-class ratio, per-class ranges for speakers, RT60 and SNR, hybrid, presentation and wall-seating probabilities, turn-taking targets |
+| `meeting.json` | Browser cards, Detail, Distributions | Room dimensions, front wall and screen, table shape and size, seat positions and mouth heights, each speaker's position type, wall-seat placement and reason (overflow or by choice), presenter spot, drift and return seat, presentation segment times, mic type and position, surfaces, noise, device chain, persona fields per seat, turn shares, one facing direction per seat (`people[].facing_deg`), `fit_resamples` |
+| `status.json` | Browser, Detail, Pipeline | Per-stage status, timings, detail line and metrics |
+| `script.json` | Detail persona panel | Turns with speaker, interaction type, `text` and `text_norm` |
 | `script_validation.json` | Detail persona panel | Judge persona-consistency score |
+| `synthesis.json` | Detail speaker card and table | NSC voice per speaker, after any reference swap |
 | `voice_validation.json` | Detail speaker card | Both speaker-verification scores, ASR-limited flags |
-| `timeline.json` | Detail persona panel | Turn start times when the script has none |
-| `speaker_splits.json` | Detail | NSC reference speaker per persona |
-| `prompts/<speaker_id>.txt` | Detail persona panel | The rendered persona prompt stage 2 sent for each speaker, shown verbatim |
-| `process.json`, `process.log` | Pipeline, jobs card | State of a run started from the viewer, and its log (M14) |
+| `timeline.json` | Detail persona panel | Turn start times and dropped turns |
+| `render.json` | Detail fact panels | Measured RT60 |
+| `prompts/<speaker_id>.txt` | Detail persona panel | The persona prompt stage 2 sent for each speaker, shown verbatim |
+| `process.json`, `process.log` | Pipeline, jobs card | State of a run started from the viewer, and its log |
 
-Computed in the UI: mouth-to-mic distance in 3D, facing angle relative to the table centre, table edge per person, room volume, histogram bins, and `text_norm` when it is not already stored.
+Computed in the UI: mouth-to-mic distance in 3D, facing angle relative to the table centre, table edge per person, room volume and histogram bins.
 
-New fields needed from the pipeline (all in place since M10, Oct 21, 2026):
+Where the manifest fields live: mic type, table shape and hybrid are `sampled["mic.type"]`, `sampled["table.shape"]` and `sampled["dynamics.hybrid"]`; sampled RT60 and SNR are `sampled["room.rt60_target"]` and `sampled["acoustics.snr_db"]`, and the measured values are in `acoustic`. `meeting.json` keeps the first NSC voice assignment, so the viewer takes the voice from the manifest or `synthesis.json`. `asr_limited` is always zero while phase C does not lease the Singlish fallback ASR, and the speaker card shows it as "0 (fallback off)". The plan shows one facing direction per seat: stage 7 turns talkers between turns but does not write those directions out.
 
-- The **rendered persona prompt** per speaker, written by stage 2 to `prompts/<speaker_id>.txt` alongside `script.json`.
-- **Turn-taking statistics** per meeting in `manifest.jsonl` (`turn_taking`), computed by stage 6 from the timeline: overlap share of speech time, backchannels per minute, interruptions as a share of turn changes, plus the raw counts.
-- A **fit resample count** in `meeting.json` (`fit_resamples`), also in the manifest's `sampled` and the stage 1 metrics in `status.json`.
-- **Speaker facing per turn: not in v1.** Decided Oct 21, 2026: the plan shows the one sampled direction per seat (`people[].facing_deg`). Stage 7 does turn talkers between turns, but it does not write those directions out; per-turn facing waits until a later viewer version asks for it.
-
-Where the other fields live: mic type, table shape and hybrid are `sampled["mic.type"]`, `sampled["table.shape"]` and `sampled["dynamics.hybrid"]` in the manifest; wall-seated and presenter counts are `position_counts`; sampled RT60 and SNR are `sampled["acoustics.rt60"]` and `sampled["acoustics.snr_db"]`, and the measured values are in `acoustic`. The NSC reference speaker per persona is `speakers[].nsc_speaker` in the manifest (or `synthesis.json`), which reflects any stage 4 voice swap; `meeting.json` keeps the first assignment. `asr_limited` is always false in current runs, because phase C no longer runs the Singlish fallback ASR, so the speaker card shows it as "n/a" when no utterance is flagged. `synthetics viewer-contract -r <run>` checks every row of this table on a run.
+`synthetics viewer-contract -r <run>` checks, on every meeting of a run, the fields the viewer reads from the pipeline's files (everything above except the process files).
 
 ## Accessibility and responsive behaviour
 
@@ -245,7 +245,7 @@ The viewer follows AeroAudio's accessibility rules, with a few additions for the
 
 - **Keyboard:** every seat on the plan is a real button reachable by Tab, with an accessible name ("Select S02, Engineering lead") and `aria-pressed` for the selected seat. Layer toggles, class and split filters use `aria-pressed`. The global focus ring is never removed.
 - **Colour is never the only signal:** room-class chips carry the class name, status dots sit next to a status word, wall materials differ in pattern and are labelled, and the selected path carries its distance as text.
-- **Plans and charts:** each plan has a text equivalent in the speaker table (distance and facing per speaker). Each histogram needs a table view toggle before release; the mock-ups only have hover tooltips.
+- **Plans and charts:** each plan has a text equivalent in the speaker table (distance and facing per speaker). Each histogram has a table view toggle listing every bin, besides its hover and focus tooltips.
 - **Semantics:** panels are sections labelled by their h2; tables have captions and `scope="col"` headers; navigation is `nav aria-label="Primary"`.
 - **Contrast:** text uses `color-fg` or `color-muted` only; `color-subtle` is limited to facing ticks and the plasterboard line, never to text that must be read.
 
@@ -256,10 +256,3 @@ Responsive behaviour:
 - The floor plan and elevation keep their scale and scroll horizontally inside their panel rather than shrinking, so measurements stay readable.
 - The right column of the detail screen and the two persona columns stack under the plan below about 1,000 px.
 - Wide tables scroll inside their frame with a 760 px minimum width.
-
-## Next steps
-
-1. Add the categorical palette and the Synthetics icon to the AeroAudio design system.
-2. Add the new pipeline fields listed under Data contract.
-3. Build the three screens against a real run, starting with the meeting detail.
-4. Add table views for every chart, then test with keyboard and a screen reader.
