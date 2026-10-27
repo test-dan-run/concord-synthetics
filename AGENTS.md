@@ -77,7 +77,8 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
   `E,F,W,I,B,UP,SIM` at line length 120.
 - Tests import `synthetics.*` and `helpers` directly (pytest `pythonpath = backend, tests`) and run against the
   fake backends. Add a test for new behaviour.
-- Docs are plain English: simple words, complete sentences, no dashes.
+- Docs are plain English: simple words, complete sentences, no dashes. They describe the system as it is now:
+  no milestone names, dates or "was X until" notes, since git history holds those.
 
 ## Gotchas and things not to do
 
@@ -96,11 +97,11 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
 - `status.json` locking uses `fcntl`, so the pipeline runs on Linux only (WSL here), not native Windows.
 - If `just test` says "Failed to spawn: pytest", the `.venv` was built at an older path. Run
   `uv sync --reinstall` (or `uv run python -m pytest`).
-- When an output file changes, update `docs/OUTPUT_CONTRACT.md` and its `schema_version`: the fine-tuning
-  application depends on it. `synthetics viewer-contract -r <run>` checks the fields the viewer reads.
+- When an output file changes, update `docs/OUTPUT_CONTRACT.md`: the fine-tuning application depends on it. New
+  fields get defaults; a rename, removal or change of meaning raises `schema_version`.
+  `synthetics viewer-contract -r <run>` checks the fields the viewer reads.
 
 ## Further docs
 
-`DESIGN_DOCUMENT.md` (pipeline design and sampling tables), `UI_DESIGN_DOCUMENT.md` (viewer),
-`docs/OUTPUT_CONTRACT.md` (output files), `docs/VOICE_BAKEOFF.md` and `docs/M5_EXIT.md` (how the voice models
-and thresholds were chosen). The code wins when they disagree.
+`DESIGN_DOCUMENT.md` (pipeline design, sampling tables, models and thresholds), `UI_DESIGN_DOCUMENT.md` (viewer),
+`docs/OUTPUT_CONTRACT.md` (output files). The code wins when they disagree.

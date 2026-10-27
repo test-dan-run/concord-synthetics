@@ -1,7 +1,7 @@
 # Synthetics output contract (version 1)
 
-Oct 21, 2026 (first written Oct 18). This document describes the files that Synthetics hands to the fine-tuning application. Every JSON
-file carries `schema_version: "1"`. A change that renames, removes or changes the meaning of a field raises the
+This document describes the files that Synthetics hands to the fine-tuning application. Every per-meeting JSON
+file and every manifest line carries `schema_version: "1"`. A change that renames, removes or changes the meaning of a field raises the
 version, and new fields are only ever added with defaults, so a reader written for version 1 keeps working.
 
 The Pydantic models in `backend/synthetics/artifacts/` are the source of truth for every field. This document
@@ -38,11 +38,13 @@ runs/<run_id>/
 The run root also holds `run_report.json` (drops and failures, time per phase, split disjointness; written by
 `synthetics report`) and `voice_report.json` (phase C rates; written by `synthetics voice-report`). A run started
 from the viewer also has `process.json` (the background process: pid, state, start and end, exit code) and
-`process.log` (its output). Those two are for the viewer only and are not part of the output contract.
+`process.log` (its output), and `synthetics export-judge-set` writes rating sheets to `judge_sets/`. These are
+for the pipeline team only and are not part of the output contract.
 
 A meeting is complete when its `status.json` shows `pass` for stage 8. Only complete meetings appear in
-`manifest.jsonl`. The manifest's `files` map gives every path relative to the run directory, so a reader never
-needs to build paths itself.
+`manifest.jsonl`. The manifest's `files` map gives the paths of the labelled outputs relative to the run
+directory (`meeting`, `script`, `timeline`, `tracks`, `rttm`, `transcript`, and `mixture`, `render` and
+`mixture_mc` when stage 7 ran). The other files are at the fixed paths above.
 
 ## Time and audio
 
@@ -97,12 +99,13 @@ leaves some out so that the realised rate stays at the planned one.
 Stage 5 checks every utterance that stage 4 made. These are quality records for the audio, not labels.
 
 - `utterances` has one entry per checked turn: `sv` maps each speaker-verification model (`sv_wavlm`,
-  `sv_redimnet`) to the cosine between the utterance and the speaker's reference clip; `asr` holds the ASR
-  hypothesis with its WER (or CER for short turns); `mos` is the predicted MOS; `passed` and `reasons` give the
+  `sv_redimnet`) to the cosine between the utterance and the speaker's reference clip; `asr` is a list of ASR
+  checks, primary first, each with its role, service, hypothesis, WER (or CER for short turns) and verdict;
+  `short` says the turn was judged by CER; `mos` is the predicted MOS; `passed` and `reasons` give the
   verdict. `skipped` names checks that were not applied: `sv` for clips under `voice.sv_min_s`, backchannels and
   turns without words, `mos` for clips under `voice.mos_min_s`, and `asr` for turns without words.
-  `asr_limited` is true when only the Singlish fallback ASR passed the turn. Phase C no longer runs that fallback,
-  so it is always false in current runs.
+  `asr_limited` is true when only the Singlish fallback ASR passed the turn. Phase C does not lease that fallback
+  by default, so it is false unless `asr_singlish` is added to phase C.
 - `speakers` has one entry per speaker: `consistency` is the mean pairwise cosine between the speaker's own
   utterances of at least `voice.consistency_min_s` (3 s), and `consistency_utts` is how many there were. When
   there are fewer than `voice.consistency_min_utts`, `consistency` is empty and the check is skipped. `ref_mos` is
@@ -111,7 +114,7 @@ Stage 5 checks every utterance that stage 4 made. These are quality records for 
   two speakers, and `too_close` is true when either model is above its `thresholds.sv_pair_max`.
 - `kept_failed` lists turns that still failed after `retries.tts_attempts`. With `voice.on_exhausted:
   keep_flagged` (the default) the meeting goes on and these turns stay in the audio and the labels. The manifest
-  counts them in `voice.kept_failed`. In the M9 run they were 1.3% of utterances.
+  counts them in `voice.kept_failed`. They are about 1% of utterances.
 
 ## Speaker turns (`labels/meeting.rttm`)
 
@@ -156,12 +159,12 @@ from the `labels/manifest_entry.json` files after every stage 8 phase, and with 
 |---|---|
 | `run_id`, `meeting_id`, `seed` | The meeting can be generated again from `seed` and `config.yaml` |
 | `split`, `room_class`, `n_speakers`, `duration` | For slicing results |
-| `sampled` | Every scalar of `meeting.json` with dotted keys (`room.rt60_target`, `mic.type`, `acoustics.snr_db`, `device_chain.codec_kbps`, ...). Per-person data is in `speakers`. `mic.type` is "laptop" (small rooms), "centre" or "chair" (large rooms; "chair" from Oct 22, 2026, a table mic in front of the chair, with `mic.near_speaker` the chair's speaker id) |
+| `sampled` | Every scalar of `meeting.json` with dotted keys (`room.rt60_target`, `mic.type`, `acoustics.snr_db`, `device_chain.codec_kbps`, ...). Per-person data is in `speakers`. `mic.type` is "laptop" (small rooms), "centre" or "chair" (large rooms; "chair" is a table mic in front of the chair, with `mic.near_speaker` the chair's speaker id) |
 | `stages_enabled` | Stage name -> on or off, for ablation runs |
 | `position_counts` | Number of people at the table, on wall seats, presenting and remote |
 | `speakers` | Per speaker: NSC voice (after any swap), split, position type, wall reason, realised share of speech time, ASR-limited utterance count |
-| `judge` | Script rounds, decision, primary and tie-break overall scores and services |
-| `voice` | TTS service, utterance, re-synthesis and library-clip counts, reference swaps, voice-check decision, checked and passed counts, ASR-limited total, pairs too close and `kept_failed` (turns kept after failing every attempt) |
+| `judge` | Script rounds, decision, `rules_passed`, `borderline`, primary and tie-break overall scores and services |
+| `voice` | TTS service, utterance and re-synthesis counts, `library_turns` (turns not made by the TTS alone), reference swaps, voice-check decision, checked and passed counts, ASR-limited total, pairs too close and `kept_failed` (turns kept after failing every attempt) |
 | `turn_taking` | The timeline `stats` above, including the raw counts (`voiced_time`, `overlap_time`, `speaker_changes`, `interruptions`, `backchannels`) |
 | `acoustic` | Stage 7 measurements (`render.json`, flattened): target and measured RT60, RT60 error, absorption scale, target and realised SNR, channel count, ISM order, ray tracing, impulse responses, noise kinds and sources, event count, `device.*` values the device chain applied, and `remote.<speaker>.*` far-end band and codec |
 | `labels` | Stage 8: aligner, utterance and word counts, truncated utterances, minimum and mean alignment coverage, dropped turns |
@@ -212,9 +215,8 @@ Stage 7 also fails a meeting when the measured RT60 is off target, as described 
   source and original licence in the index. Every clip passed a check for pitched, speech-like frames, so the noise
   holds no unlabelled speech.
 - The planned overlaps alone fall a little short of the 10 to 25% target. With the default turn-taking settings
-  (since Oct 21, 2026, 50% of transitions overlapping by 0.3 to 2.0 s) they give about 12 to 15% of speech time.
-  Runs made before then used 30% and 0.1 to 1.0 s, which gave 5 to 8%. Stage 6 meets the target by lengthening the
-  overlaps (up to three times, and never more than half of either turn) and then by letting more transitions overlap.
+  (50% of transitions overlapping by 0.3 to 2.0 s) they give about 12 to 15% of speech time. A run's frozen config
+  may hold other settings. Stage 6 meets the target by lengthening the overlaps (up to three times, and never more than half of either turn) and then by letting more transitions overlap.
   `status.json` records both as stage 6 metrics (`lead_scale`, `converted_transitions`). A meeting with few
   speaker changes (for example two people, one of them presenting) can run out of transitions to overlap; it then
   stays under its target, still inside the configured range, and stage 6 says "out of reach" on its status line.
@@ -224,13 +226,12 @@ Stage 7 also fails a meeting when the measured RT60 is off target, as described 
 Changing a render setting (`simulation` in `config.yaml`) re-runs only stages 7 and 8. Changing a sampled acoustic
 distribution (`acoustics` in `config.yaml`, for example the SNR range) re-runs stages 1, 7 and 8, and leaves the
 scripts and the speech alone. This holds for runs with `revision: 2` in `config.yaml`, which is the default for new
-runs since Oct 21, 2026:
+runs:
 
 1. Stage 1 draws the acoustic values (`room.walls`, `room.floor`, `room.ceiling`, `room.rt60_target`, `acoustics`
    and `device_chain`; `ACOUSTIC_FIELDS` in `artifacts/meeting.py`) from a random stream of their own, so a change
    to them never moves the other draws.
 2. Stages 2 to 6 hash `meeting.json` without those fields in their cache keys.
 
-Runs made before then (`m3-10`, `m5-exit`, `m9-e2e`) have no `revision` in their frozen config, so they are
-revision 1: their meetings keep the draws they were made with and their cache keys do not change, and a change to
+A frozen config with no `revision` (the reference runs `m3-10`, `m5-exit` and `m9-e2e`) is revision 1: their meetings keep the draws they were made with and their cache keys do not change, and a change to
 their acoustics still re-runs every stage. The same seed draws different meetings under the two revisions.

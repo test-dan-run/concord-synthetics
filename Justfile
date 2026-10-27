@@ -25,7 +25,7 @@ test-live *args:
 lint:
     uv run ruff check backend tests
 
-# create runs/<id>: frozen config, speaker splits, meeting folders (e.g. just init m3-50 50 2026)
+# create runs/<id>: frozen config, speaker splits, meeting folders (e.g. just init d-50 50 2026)
 init run_id n="20" seed="1" *flags:
     {{cli}} init-run {{run_id}} --n {{n}} --seed {{seed}} {{flags}}
 
@@ -53,11 +53,11 @@ status run_id *flags:
 splits run_id:
     {{cli}} splits -r {{run_id}}
 
-# M1 exit check: sample N meetings and compare every rate with its target
+# sampler check: sample N meetings and compare every rate with its target
 sampler-report n="1000":
     {{cli}} sampler-report --n {{n}}
 
-# M2: validate the pool, extract candidates, clean references (prep services), readiness report
+# NSC references: validate the pool, extract candidates, clean references (prep services), readiness report
 nsc-validate:
     {{cli}} nsc validate
 nsc-extract:
@@ -67,23 +67,23 @@ nsc-clean *flags:
 nsc-report *flags:
     {{cli}} nsc report {{flags}}
 
-# M5: real laughter / coughs / breaths / noises from NSC into the stage 4 sound library (uses wpe-dereverb)
+# real laughter / coughs / breaths / noises from NSC into the stage 4 sound library (uses wpe-dereverb)
 nsc-nonlexical *flags:
     {{cli}} nsc nonlexical {{flags}}
 
-# M3 judge calibration: rating sheet out, fitted threshold back in
+# judge calibration: rating sheet out, fitted threshold back in
 judge-set run_id n="60":
     {{cli}} export-judge-set -r {{run_id}} --n {{n}}
 fit-judge sheet out="config/judge_thresholds.yaml":
     {{cli}} fit-judge-threshold {{sheet}} --out {{out}}
 
-# M4: phase C bake-off on real NSC speakers (leases the phase C services), and SV threshold calibration
+# phase C bake-off on real NSC speakers (leases the phase C services), and SV threshold calibration
 bakeoff *flags:
     {{cli}} bakeoff {{flags}}
 calibrate-sv *flags:
     {{cli}} calibrate-sv {{flags}}
 
-# M10: check a run against the viewer's data contract
+# check a run against the viewer's data contract
 viewer-contract run_id:
     {{cli}} viewer-contract -r {{run_id}}
 
