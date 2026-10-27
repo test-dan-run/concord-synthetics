@@ -122,7 +122,7 @@ def write_global_index(paths: NscPaths) -> int:
 
 
 def readiness(paths: NscPaths, *, min_refs: int = 3, meeting_size: int = 20, mos_min: float = DEFAULT_MOS_MIN) -> dict:
-    """M2 exit check: every selected speaker has >= `min_refs` clean references (MOS >= `mos_min`), and each
+    """Readiness check: every selected speaker has >= `min_refs` clean references (MOS >= `mos_min`), and each
     split can still fill a `meeting_size`-speaker meeting after removing speakers that fail cleanup."""
     pool = load_pool(paths.pool_csv)
     good: Counter = Counter()

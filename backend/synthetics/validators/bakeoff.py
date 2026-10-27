@@ -1,4 +1,4 @@
-"""`synthetics bakeoff` (M4): the phase C models on real NSC speakers, before stage 5's choices are final.
+"""`synthetics bakeoff`: the phase C models on real NSC speakers, to choose the stage 4 and 5 models and settings.
 
 For each sampled speaker, the best clean clip is the reference and the speaker's other clean clips are targets:
 their transcripts (natural Singlish from that speaker) are cloned from the reference, so every clone has a real

@@ -1,4 +1,4 @@
-"""M1: stage 1 meeting sampler — property, determinism and distribution tests."""
+"""Stage 1 meeting sampler: property, determinism and distribution tests."""
 
 from __future__ import annotations
 

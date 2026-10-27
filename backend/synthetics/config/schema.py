@@ -98,8 +98,8 @@ class RoomClassesConfig(_M):
     seat_offset: Uniform = Uniform(lo=0.2, hi=0.3)  # mouth, horizontally outward from the table edge
     min_person_gap: float = 0.5  # any two people in the room, 2D
     max_fit_resamples: int = 500
-    # Added Oct 22, 2026 (new runs set it in room_classes.yaml). The default, a table anywhere that keeps the wall
-    # clearance, is how earlier runs placed it, and a frozen config without the field reads it.
+    # New runs set it in room_classes.yaml. The default, a table anywhere that keeps the wall clearance, is how
+    # older runs placed it, and a frozen config without the field reads it.
     table_at_centre: bool = False
 
     @model_validator(mode="after")
@@ -150,8 +150,8 @@ class SeatingConfig(_M):
     presenters: PresenterConfig
     screen: ScreenConfig = ScreenConfig()
     front_wall: Wall = "W"
-    # Large rooms: the chance that the chair takes the head of the table, an end seat on its long axis. Added
-    # Oct 22, 2026; the default 0 is how earlier runs seated the chair (any table seat).
+    # Large rooms: the chance that the chair takes the head of the table, an end seat on its long axis. The
+    # default 0 is how older runs seated the chair (any table seat).
     chair_at_head: Bernoulli = Bernoulli(p=0.0)
 
 
@@ -168,7 +168,7 @@ class MicConfig(_M):
     array_radius: float = 0.035
     speakerphone_offset: Uniform = Uniform(lo=0.3, hi=0.8)  # from the table centre along the long axis
     # Large rooms: the chance that the table mic sits in front of the chair instead of at the centre, to capture
-    # the chair's decisions best. Added Oct 22, 2026; the default 0 is how earlier runs placed it.
+    # the chair's decisions best. The default 0 is how older runs placed it.
     chair_mic: Bernoulli = Bernoulli(p=0.0)
     chair_mic_distance: Uniform = Uniform(lo=0.4, hi=0.6)  # the chair's mouth to the mic, horizontal
 
@@ -334,7 +334,7 @@ class LexiconRef(_M):
 
 
 class VoiceConfig(_M):
-    """Stages 4-5 (M5)."""
+    """Stages 4-5."""
 
     trim_pad_s: float = 0.05  # silence kept at each end of an utterance WAV (contract with stage 6)
     max_speaker_swaps: int = 2  # per meeting, after clip swaps run out
@@ -363,7 +363,7 @@ class VoiceConfig(_M):
 
 
 class AssemblyConfig(_M):
-    """Stage 6 (M6). Turn-taking distributions live in `turn_taking`; these settle how they are realised."""
+    """Stage 6. Turn-taking distributions live in `turn_taking`; these settle how they are realised."""
 
     lead_in_s: float = 1.0  # silence before the first segment
     tail_s: float = 1.0  # silence after the last segment
@@ -394,7 +394,7 @@ class SurfaceMaterials(_M):
 
 
 class SimulationConfig(_M):
-    """Stage 7 (M7). Room and device values are sampled in stage 1 (`acoustics`); these are render settings."""
+    """Stage 7. Room and device values are sampled in stage 1 (`acoustics`); these are render settings."""
 
     ism_max_order: int = 3  # with ray tracing for the late tail
     ray_tracing: list[RoomClass] = Field(default_factory=lambda: ["large"])
@@ -441,7 +441,7 @@ class SimulationConfig(_M):
 
 
 class LabelsConfig(_M):
-    """Stage 8 (M8). Gates live in `thresholds`."""
+    """Stage 8. Gates live in `thresholds`."""
 
     align_language: str = "en"  # the aligner's LANGUAGE for most utterances
     align_language_cjk: str = "zh"  # for utterances with Chinese characters (code-switched Mandarin)
@@ -452,7 +452,7 @@ class LabelsConfig(_M):
 
 class RunConfig(_M):
     schema_version: Literal["1"] = "1"
-    # How a run samples and caches. 1: runs made before Oct 21, 2026, which a frozen config without the field is.
+    # How a run samples and caches. 1: older runs, which a frozen config without the field is.
     # 2 (the default for new runs, set in stages.yaml): stage 1 draws the acoustic values (`ACOUSTIC_FIELDS` of
     # meeting.json) from their own random stream, and stages 2-6 hash meeting.json without them, so a change to a
     # sampled acoustic distribution re-runs only stages 1, 7 and 8.

@@ -1,4 +1,4 @@
-"""M2: pool validation, extraction from a synthetic SDM zip, cleanup with fake services, readiness."""
+"""NSC reference prep: pool validation, extraction from a synthetic SDM zip, cleanup with fake services, readiness."""
 
 from __future__ import annotations
 

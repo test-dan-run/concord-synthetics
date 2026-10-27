@@ -1,4 +1,4 @@
-"""M12: the viewer's read-only API on a fake run of all eight stages."""
+"""The viewer's read-only API on a fake run of all eight stages."""
 
 from __future__ import annotations
 

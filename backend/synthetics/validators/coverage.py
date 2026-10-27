@@ -1,6 +1,6 @@
-"""The M9 coverage list, and a search for a run seed whose meetings meet it.
+"""The coverage list for a small run, and a search for a run seed whose meetings meet it.
 
-With only 20 meetings, random sampling can miss rare cases, so the M9 run's seed is chosen to cover: all three
+With only 20 meetings, random sampling can miss rare cases, so a small run's seed can be chosen to cover: all three
 splits, both room classes, at least one 20-speaker test meeting, and at least one meeting each with presenters,
 wall seats (overflow and by choice) and remote participants. Stage 1 is sampled in memory, exactly as a run does,
 so the chosen seed reproduces the same meetings in `init-run`. The distributions themselves are untouched.

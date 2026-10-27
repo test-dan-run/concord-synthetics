@@ -1,4 +1,4 @@
-"""M10: the UI data contract (UI_DESIGN_DOCUMENT.md, "Data contract") holds on a fake run of all eight stages, and
+"""The UI data contract (UI_DESIGN_DOCUMENT.md, "Data contract") holds on a fake run of all eight stages, and
 on the real m9-e2e run when it is present."""
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def test_the_cli_reports_rows_as_json(run_dir):
 REAL = ROOT / "runs" / "m9-e2e"
 
 
-@pytest.mark.skipif(not (REAL / "manifest.jsonl").is_file(), reason="the real M9 run is not on this machine")
+@pytest.mark.skipif(not (REAL / "manifest.jsonl").is_file(), reason="the reference run m9-e2e is not on this machine")
 def test_the_contract_holds_on_the_real_m9_run():
     rows = check_run(Path(REAL))
     assert [r for r in rows if not r.ok] == []

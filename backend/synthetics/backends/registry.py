@@ -94,7 +94,7 @@ class Backends:
             return aicore_impl.AicoreSpeakerEmbedder(service, self.transport, name=role.value)
         if role == Role.ALIGNER:
             return aicore_impl.AicoreAligner(service, self.transport)
-        raise BackendError(f"role {role.value!r} has no aicore client yet (later milestone)")
+        raise BackendError(f"role {role.value!r} has no aicore client")
 
 
 def check_endpoints(cfg: BackendsConfig, roles: Iterable[Role]) -> list[str]:

@@ -1,4 +1,4 @@
-"""The M9 run report, `run_report.json` in the run directory: stage counts, every meeting that dropped or failed
+"""The run report, `run_report.json` in the run directory: stage counts, every meeting that dropped or failed
 and why, time per phase (summed over every `run` / `resume` of the run; for reference only), the phase C
 figures, and the speaker-disjointness check on the final manifest.
 """

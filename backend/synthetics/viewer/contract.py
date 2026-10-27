@@ -1,4 +1,4 @@
-"""The viewer's data contract (`UI_DESIGN_DOCUMENT.md`, "Data contract") as checks over a run directory (M10).
+"""The viewer's data contract (`UI_DESIGN_DOCUMENT.md`, "Data contract") as checks over a run directory.
 
 Each `Row` is one line of the UI doc's table: an artifact and the fields the viewer reads from it. A meeting's file
 is only required once the stage that writes it has passed, so a meeting that failed stage 7 is still checked up to
