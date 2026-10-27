@@ -4,8 +4,8 @@ The M5 exit is met. All 10 meetings of the M3 run passed stage 5 with the settin
 `runs/m5-exit` in `apps/Synthetics`: a copy of `runs/m3-10` with its phase C settings brought up to date, so the
 M3 record is untouched. The figures are in `runs/m5-exit/voice_report.json`, from `synthetics voice-report`.
 
-The exit was cut from 50 meetings to these 10 on Oct 19 (see `IMPLEMENTATION_PLAN.md` §M5). M9 reports the
-meeting rates again over its 20 meetings.
+The exit was cut from 50 meetings to these 10 on Oct 19, because 50 would have cost about 5 hours of scripts and a
+day of phase C without moving the utterance rates. M9 reports the meeting rates again over its 20 meetings.
 
 ## Figures
 

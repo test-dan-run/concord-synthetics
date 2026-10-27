@@ -1,10 +1,8 @@
 # Synthetics
 
-Synthetic Singapore meeting audio with full labels. Start with `AGENTS.md` for the purpose and design in short
-form. See `DESIGN_DOCUMENT.md` for the pipeline and
-`IMPLEMENTATION_PLAN.md` for the build plan, `docs/OUTPUT_CONTRACT.md` for the files a run hands over, and
-`docs/HANDOFF.md` for the current state. Built: milestones M0 to M13, that is all eight stages, end-to-end
-orchestration, and the Room Config Viewer (read-only API plus web UI).
+Synthetic Singapore meeting audio with full labels. Start with `AGENTS.md` for the layout, commands and rules.
+See `DESIGN_DOCUMENT.md` for the pipeline, `UI_DESIGN_DOCUMENT.md` for the viewer and `docs/OUTPUT_CONTRACT.md`
+for the files a run hands over.
 
 ## Setup
 
@@ -86,3 +84,11 @@ just viewer-dev                 # API with reload + Vite dev server on http://12
   conversations; the generator writes the words chunk by chunk. Persona prompts are saved verbatim.
 - **Cleanup cleans the 12 best-ranked candidates per speaker** (by length and markup), not every candidate:
   every candidate is ~26,000 clips (~13 h on CPU). `just nsc-clean --max-candidates 0` cleans all of them.
+
+## Licences to carry into the dataset card
+
+- **MERaLiON-3:** the MERaLiON Public Licence requires an acknowledgement, and the Gemma terms apply (used in
+  the bake-off only).
+- **WavLM-Large ECAPA:** CC BY-SA 3.0. It is only used to check our own audio.
+- **ESC-50 noise clips:** CC BY-NC, non-commercial only.
+- **NSC:** the IMDA licence covers the reference voices and the non-lexical clips cut from them.

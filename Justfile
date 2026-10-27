@@ -1,4 +1,4 @@
-# Synthetics. Run `just` for the recipe list. See README.md and IMPLEMENTATION_PLAN.md.
+# Synthetics. Run `just` for the recipe list. See README.md and AGENTS.md.
 
 set dotenv-load := true
 set shell := ["bash", "-euo", "pipefail", "-c"]
