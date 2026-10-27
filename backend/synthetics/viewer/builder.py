@@ -1,4 +1,4 @@
-"""The viewer's run builder: preview a config, create a run, start and stop it (M14).
+"""The viewer's run builder: preview a config, create a run, start and stop it.
 
 These are the only routes that write. Creating a run writes what `init-run` writes (the frozen config.yaml,
 speaker_splits.json and empty meeting folders); starting it runs the pipeline in a background process

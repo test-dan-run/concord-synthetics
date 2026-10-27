@@ -94,7 +94,7 @@ def run_phase_c(sched, ids: list[str], report) -> None:
 
 
 def summarise_c(run_dir: Path) -> dict:
-    """Phase C figures for the M5 exit check, over the meetings stage 5 decided (pass or fail).
+    """Phase C figures for `synthetics voice-report`, over the meetings stage 5 decided (pass or fail).
 
     Stage 4 counts a re-render after a reference swap as an attempt too, so an utterance's re-syntheses for failed
     checks are its attempts, less one, less the swaps of its speaker.

@@ -1,4 +1,4 @@
-"""Realised stage 1 rates against the configured targets (M1 exit check).
+"""Realised stage 1 rates against the configured targets (the sampler check).
 
 Each check compares an observed rate or mean with its target. The tolerance is `z` standard errors (binomial
 for rates, sample-based for means) plus a small floor, so the check scales with the sample size.

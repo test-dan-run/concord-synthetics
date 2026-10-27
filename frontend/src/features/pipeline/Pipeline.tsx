@@ -1,4 +1,4 @@
-// The run's background process (M14): start or resume it, stop it, and follow its stages and log. Starting a run
+// The run's background process: start or resume it, stop it, and follow its stages and log. Starting a run
 // on real backends asks first, listing the platform services each GPU phase leases. Stopping interrupts it as
 // Ctrl-C would; Start again continues from the status files, and finished stages are cache hits.
 

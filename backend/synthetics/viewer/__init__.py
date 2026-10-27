@@ -1,1 +1,1 @@
-"""The Room Config Viewer's backend: the UI data contract check (M10) and the read-only API over runs/ (M12)."""
+"""The Room Config Viewer's backend: the UI data contract check, the read-only API over runs/ and the run builder."""

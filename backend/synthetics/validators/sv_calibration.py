@@ -1,4 +1,4 @@
-"""`synthetics calibrate-sv` (M4): per-model SV thresholds from real NSC same-speaker and different-speaker pairs.
+"""`synthetics calibrate-sv`: per-model SV thresholds from real NSC same-speaker and different-speaker pairs.
 
 Every clean reference clip (`nsc-part3-refs/clean/`, five per pool speaker) is embedded by both SV models. Same
 pairs are all clip pairs within a speaker; different pairs are one clip per speaker against every other speaker

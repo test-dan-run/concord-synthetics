@@ -1,4 +1,4 @@
-"""M3 with fake backends: turn plan, stage 2, stage 3 (rules, judges, tie-break deferral), scheduler rounds."""
+"""Stages 2 and 3 with fake backends: turn plan, stage 2, stage 3 (rules, judges, tie-break deferral), scheduler rounds."""
 
 from __future__ import annotations
 

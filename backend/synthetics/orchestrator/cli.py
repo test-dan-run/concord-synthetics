@@ -12,7 +12,7 @@ import typer
 from ..config.schema import Phase, StageId
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help=__doc__)
-nsc_app = typer.Typer(no_args_is_help=True, help="NSC Part 3 reference data (M2).")
+nsc_app = typer.Typer(no_args_is_help=True, help="NSC Part 3 reference data.")
 app.add_typer(nsc_app, name="nsc")
 
 RunOpt = Annotated[str, typer.Option("--run", "-r", help="run id under SYNTHETICS_RUNS, or a run directory")]
@@ -207,7 +207,7 @@ def status(run: RunOpt, meetings: Annotated[bool, typer.Option(help="one line pe
 def sampler_report(n: Annotated[int, typer.Option()] = 1000, seed: Annotated[int, typer.Option()] = 1,
                    config: Annotated[list[Path], typer.Option("--config", "-c")] = [],  # noqa: B006
                    out: Annotated[Path | None, typer.Option(help="also write the checks as JSON")] = None):
-    """M1 exit check: sample N meetings (stage 1 only, in memory) and compare every rate with its target."""
+    """Sampler check: sample N meetings (stage 1 only, in memory) and compare every rate with its target."""
 
     from ..config.loader import load_run_config
     from ..nsc.pool import speaker_splits
@@ -231,7 +231,7 @@ def coverage_seed(n: Annotated[int, typer.Option(help="meetings in the run")] = 
                   start: Annotated[int, typer.Option(help="first seed to try")] = 1,
                   tries: Annotated[int, typer.Option()] = 500,
                   config: Annotated[list[Path], typer.Option("--config", "-c", help="YAML overlays, in order")] = []):  # noqa: B006
-    """M9: the first run seed whose N meetings cover every split, room class, a 20-speaker test meeting,
+    """The first run seed whose N meetings cover every split, room class, a 20-speaker test meeting,
     presenters, wall seats (overflow and by choice) and remote participants."""
     from ..config.loader import load_run_config
     from ..validators.coverage import find_seed
@@ -269,7 +269,7 @@ def fit_judge_threshold(sheet: Annotated[Path, typer.Argument(help="the filled r
 
 
 
-# ---------------------------------------------------------------- phase C (M4)
+# ---------------------------------------------------------------- phase C
 
 
 @app.command()
@@ -295,9 +295,9 @@ def bakeoff(out: Annotated[Path, typer.Option(help="report directory")] = Path("
 
 @app.command("voice-report")
 def voice_report(run: RunOpt,
-                 min_meetings: Annotated[int, typer.Option(help="meetings stage 5 must have decided (M5 exit: 10)")] = 10,
+                 min_meetings: Annotated[int, typer.Option(help="meetings stage 5 must have decided")] = 10,
                  out: Annotated[Path | None, typer.Option(help="also write the figures as JSON")] = None):
-    """M5 exit check: pass, first-pass, re-synthesis, ASR-limited and swap rates over phase C."""
+    """Phase C check: pass, first-pass, re-synthesis, ASR-limited and swap rates over phase C."""
     from .phase_c import summarise_c
 
     res = summarise_c(_run_dir(run))
@@ -311,7 +311,7 @@ def voice_report(run: RunOpt,
 
 @app.command("viewer-contract")
 def viewer_contract(run: RunOpt, as_json: Annotated[bool, typer.Option("--json", help="rows as JSON")] = False):
-    """M10 exit check: every field of the UI data contract, on every meeting of the run."""
+    """Viewer data check: every field of the UI data contract, on every meeting of the run."""
     from ..viewer.contract import check_run, format_rows
 
     rows = check_run(_run_dir(run))
@@ -333,7 +333,7 @@ def calibrate_sv(out: Annotated[Path, typer.Option(help="YAML overlay to write")
     typer.echo(f"wrote {app_path(out)}")
 
 
-# ---------------------------------------------------------------- NSC (M2)
+# ---------------------------------------------------------------- NSC
 
 
 @nsc_app.command("validate")
@@ -404,7 +404,7 @@ def nsc_nonlexical(out_dir: Annotated[Path | None, typer.Option(help="sound libr
 def nsc_report(out_dir: Annotated[Path | None, typer.Option()] = None,
                min_refs: Annotated[int, typer.Option()] = 3, meeting_size: Annotated[int, typer.Option()] = 20,
                mos_min: Annotated[float, typer.Option(help="DNSMOS OVRL floor for a usable reference")] = 2.5):
-    """M2 exit check: clean references per speaker, and whether each split can still fill a meeting."""
+    """Readiness check: clean references per speaker, and whether each split can still fill a meeting."""
     from ..nsc.cleanup import readiness
     from ..nsc.settings import nsc_paths
 

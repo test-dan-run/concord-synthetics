@@ -1,4 +1,4 @@
-"""Judge calibration, file-based (M3): no rating UI.
+"""Judge calibration, file-based: no rating UI.
 
 `export_judge_set` writes runs/<run>/judge_sets/<name>/:
     sheet.csv          one row per script; rubric columns left blank for raters (judge scores are NOT shown)

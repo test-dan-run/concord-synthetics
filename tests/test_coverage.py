@@ -1,4 +1,4 @@
-"""M9 coverage: the in-memory stage 1 sample matches what a run writes, and the seed search."""
+"""Run coverage: the in-memory stage 1 sample matches what a run writes, and the seed search."""
 
 from __future__ import annotations
 

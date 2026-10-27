@@ -107,7 +107,7 @@ class ReferenceIndex:
 def _load(index_path: str, refs_dir: str) -> ReferenceIndex:
     path = Path(index_path)
     if not path.is_file():
-        raise FileNotFoundError(f"{path} missing; run `synthetics nsc clean` (M2) first")
+        raise FileNotFoundError(f"{path} missing; run `synthetics nsc clean` first")
     raw = path.read_bytes()
     clips = []
     for line in raw.decode("utf-8").splitlines():

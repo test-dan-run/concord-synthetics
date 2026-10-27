@@ -1,4 +1,4 @@
-"""The M4-M8 contract: phase C / stage 6-8 artifact models and the fake audio backends behind them."""
+"""The stage 4 to 8 contract: phase C and stage 6-8 artifact models and the fake audio backends behind them."""
 
 from __future__ import annotations
 

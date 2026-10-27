@@ -1,4 +1,4 @@
-"""M11 ablations: switching off stage 3, 5 or 7 skips it cleanly, the meeting still reaches the manifest, and the
+"""Ablations: switching off stage 3, 5 or 7 skips it cleanly, the meeting still reaches the manifest, and the
 manifest records the toggle. Stages 1, 2, 4, 6 and 8 write what every later stage needs, so they have no ablation."""
 
 from __future__ import annotations

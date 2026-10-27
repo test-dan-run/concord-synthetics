@@ -1,4 +1,4 @@
-"""The Room Config Viewer's API over `runs/<run_id>/` (M12), and the built frontend.
+"""The Room Config Viewer's API over `runs/<run_id>/`, and the built frontend.
 
 A browser cannot read the local disk, so this layer lists runs and serves their files. It adds no fields of its
 own: every number the viewer shows is either in a pipeline artifact or computed in the browser. The routes here

@@ -1,4 +1,4 @@
-"""M14: the viewer's run builder (preview, create, start, stop) and the background run process."""
+"""The viewer's run builder (preview, create, start, stop) and the background run process."""
 
 from __future__ import annotations
 

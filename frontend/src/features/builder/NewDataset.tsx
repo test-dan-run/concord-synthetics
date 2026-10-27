@@ -1,4 +1,4 @@
-// The run builder (M14): choose the settings, preview the meetings stage 1 will sample, then create the run. The
+// The run builder: choose the settings, preview the meetings stage 1 will sample, then create the run. The
 // form starts from the defaults or from an existing run's frozen config, and sends only what differs from the
 // defaults, as `init-run --set` would. Creating writes the run's frozen config.yaml; the Pipeline screen starts it.
 
