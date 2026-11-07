@@ -136,3 +136,16 @@ def test_suggest_routes(tmp_path):
     assert r.status_code == 200 and r.json()["overrides"] == {"acoustics.snr_db.large.lo": -5.0,
                                                                "acoustics.snr_db.large.hi": 15.0}
     assert c.post("/api/suggest/apply", json={"choices": [{"group": "noise", "option": "nope"}]}).status_code == 422
+
+
+def test_topic_suggestions_come_from_the_bank_and_skip_the_users_list(tmp_path):
+    from synthetics.viewer.api import create_app
+    from synthetics.viewer.suggest_routes import topic_bank
+
+    c = TestClient(create_app(tmp_path, tmp_path / "no-dist"))
+    bank = {t for ts in topic_bank().values() for t in ts}
+    first = c.get("/api/topics", params={"n": 4}).json()["topics"]
+    assert len(first) == 4 and {t["topic"] for t in first} <= bank and len({t["theme"] for t in first}) == 4
+    mine = first[0]["topic"]
+    again = c.get("/api/topics", params={"n": 20, "exclude": [mine]}).json()["topics"]
+    assert mine not in {t["topic"] for t in again}

@@ -23,7 +23,7 @@ from ..artifacts.models import Disfluency, GeneratorInfo, Script, Turn
 from ..backends.base import BackendError, ChatLLM, Msg
 from ..config.schema import Phase, Role, RunConfig, ScriptConfig, StageId, TurnTakingConfig
 from ..text import pdpa
-from ..text.singlish import Lexicon, analyse, canonical_text, ends_with_cutoff, text_norm
+from ..text.singlish import Lexicon, analyse, canonical_text, ends_with_cutoff, run_lexicon, text_norm
 from . import prompts
 from .base import StageContext, StageResult
 from .script_plan import PlannedTurn, build_plan
@@ -95,14 +95,14 @@ class ScriptStage:
     version = "4"
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
-        return Stage2Config(script=cfg.script, turn_taking=cfg.turn_taking, lexicon_version=Lexicon.load(cfg.lexicon.path).version,
+        return Stage2Config(script=cfg.script, turn_taking=cfg.turn_taking, lexicon_version=run_lexicon(cfg).version,
                             service=cfg.backends.roles.get(Role.GENERATOR, ""))
 
     def run(self, ctx: StageContext) -> StageResult:
         from .runner import meeting_seed
 
         cfg, sc = ctx.cfg, ctx.cfg.script
-        lex = Lexicon.load(cfg.lexicon.path)
+        lex = run_lexicon(cfg)
         m = read_model(ctx.paths.meeting, MeetingSpec)
         llm: ChatLLM = ctx.backends.get(Role.GENERATOR)
         plan = build_plan(m, cfg.turn_taking, plan_rng(cfg, meeting_seed(cfg.seed, m.meeting_id)))
@@ -116,6 +116,8 @@ class ScriptStage:
             n=m.n_speakers, hybrid=(", some joining remotely" if m.dynamics.hybrid else ""),
             presentation=(" It includes a slide presentation followed by Q&A." if m.dynamics.presentation else ""),
             roster=prompts.roster_lines(m))
+        terms = prompts.key_terms_line(cfg.key_terms)  # "" without key terms: the prompt is unchanged
+        brief_msg += terms
         res = llm.chat([Msg("user", brief_msg)], json_schema=prompts.BRIEF_SCHEMA, temperature=sc.temperature,
                        seed=ctx.seed, max_tokens=sc.max_tokens, thinking=sc.thinking)
         brief_out = res.json()
@@ -135,7 +137,7 @@ class ScriptStage:
         for sid, text in persona_text.items():
             atomic_write_text(ctx.paths.prompt(sid), text)
         system = prompts.SCRIPT_SYSTEM[sc.template_version].format(
-            brief=brief, personas="\n".join(persona_text[s] for s in sorted(persona_text)))
+            brief=brief, personas="\n".join(persona_text[s] for s in sorted(persona_text))) + terms
 
         # chunked generation
         texts: list[str] = []

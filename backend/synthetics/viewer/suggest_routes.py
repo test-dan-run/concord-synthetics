@@ -9,9 +9,10 @@ and say so (`model: "fake"`), so the flow still works in fake mode.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..config.schema import Role
@@ -52,7 +53,34 @@ def _merged(draft: Draft, overrides: dict[str, Any]) -> dict:
     return {**draft.model_dump(), "overrides": {**draft.overrides, **overrides}}
 
 
+TOPIC_BANK = Path(__file__).resolve().parents[1] / "config/defaults/topic_bank.yaml"
+
+
+def topic_bank() -> dict[str, list[str]]:
+    import yaml
+
+    return yaml.safe_load(TOPIC_BANK.read_text(encoding="utf-8"))["topics"]
+
+
 def add_routes(app: FastAPI, *, model_factory=decision_model) -> None:
+    @app.get("/api/topics")
+    def suggest_topics(n: int = Query(5, ge=1, le=20), seed: int = Query(0, ge=0),
+                       exclude: list[str] = Query(default_factory=list)) -> dict:
+        """`n` topics from the curated bank, spread over its themes, leaving out `exclude` (the user's list).
+        `seed` picks another set for "suggest others"."""
+        import numpy as np
+
+        taken = {t.strip().lower() for t in exclude}
+        bank = {theme: [t for t in ts if t.lower() not in taken] for theme, ts in topic_bank().items()}
+        rng = np.random.default_rng(seed)
+        order = {theme: list(rng.permutation(ts)) for theme, ts in bank.items()}
+        out: list[dict] = []
+        while len(out) < n and any(order.values()):
+            for theme in sorted(order):
+                if order[theme] and len(out) < n:
+                    out.append({"topic": str(order[theme].pop()), "theme": theme})
+        return {"topics": out}
+
     @app.post("/api/suggest")
     def post_suggest(body: SuggestIn) -> dict:
         cfg, _ = build_config(body.draft)

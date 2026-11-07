@@ -474,6 +474,11 @@ class LabelsConfig(_M):
 # ---------------------------------------------------------------- the run
 
 
+class KeyTerm(_M):
+    term: str = Field(min_length=1, max_length=60)
+    say: str | None = Field(None, max_length=80)  # how it is said: "letters", or a respelling such as "sing pass"
+
+
 class RunConfig(_M):
     schema_version: Literal["1"] = "1"
     # How a run samples and caches. 1: older runs, which a frozen config without the field is.
@@ -504,6 +509,10 @@ class RunConfig(_M):
     thresholds: ThresholdsConfig = ThresholdsConfig()
     lexicon: LexiconRef = LexiconRef()
     speaker_pool: SpeakerPoolConfig
+    # Words the meetings should use (product names, acronyms, local terms). Stage 2 asks for them in the brief,
+    # and the run's lexicon makes their spelling canonical and their pronunciation a TTS hint. Empty: no change
+    # anywhere, so runs without key terms keep their cache keys.
+    key_terms: list[KeyTerm] = []
 
     def enabled(self, stage: StageId) -> bool:
         toggle = self.stages.get(stage)

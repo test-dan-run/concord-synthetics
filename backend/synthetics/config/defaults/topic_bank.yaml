@@ -1,0 +1,35 @@
+# Meeting topics the guided flow offers under "Suggest topics for me". Picked by hand, Singapore-flavoured, with
+# no real people's names; nothing here changes a run until the user adds a topic to their list.
+topics:
+  work and projects:
+    - go-live readiness for PayNow refunds in the merchant app
+    - migrating the HR system to a new cloud vendor before the financial year end
+    - rolling out SingPass login for the customer portal
+    - redesigning the onboarding flow of the banking app
+    - choosing a vendor for the new point-of-sale terminals
+    - warehouse automation trial in Tuas and staff retraining
+    - moving the data centre workloads to a regional cloud zone
+    - a delayed software release and what to cut from scope
+  money and planning:
+    - quarterly sales review for the Southeast Asia region
+    - next year's budget and where to cut costs
+    - budget overrun on the HDB upgrading works
+    - preparing the grant application for the IMDA digitalisation scheme
+    - pricing a new subscription plan for small businesses
+    - year-end performance appraisal calibration
+  operations and incidents:
+    - a data leak incident and the PDPC notification timeline
+    - customer complaints about late deliveries during the GSS sale
+    - delays in the MRT station renovation contract and penalty clauses
+    - clinic appointment no-show rates and the SMS reminder pilot
+    - a server outage post-mortem and on-call changes
+    - food safety findings at the central kitchen
+  people and events:
+    - planning the Chinese New Year staff dinner and budget
+    - office move from Raffles Place to one-north and the seating plan
+    - hiring plan for the polytechnic internship programme
+    - NDP volunteer roster and logistics for the community club
+    - school CCA schedule clash and parent feedback
+    - hawker centre food stall tender evaluation for the town council
+    - a flexible work arrangement policy after staff feedback
+    - organising a Hari Raya open house for clients
