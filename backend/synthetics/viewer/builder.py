@@ -45,6 +45,17 @@ class Draft(BaseModel):
     seed: int = Field(1, ge=0)
     overrides: dict[str, Any] = Field(default_factory=dict)  # dotted keys, e.g. "acoustics.hybrid.large.p"
     yaml: str = ""  # an overlay like a --config file; dotted keys work too
+    # A pilot: the first PILOT_MEETINGS meetings of the draft as `<run_id>-pilot`, in one wave, to listen to before
+    # the full run. Same seed and settings, so its meetings are the full run's first meetings.
+    pilot: bool = False
+
+
+PILOT_MEETINGS = 3
+PILOT_SUFFIX = "-pilot"
+
+
+class VoiceSwapIn(BaseModel):
+    speaker_id: str
 
 
 class StartRequest(BaseModel):
@@ -180,6 +191,10 @@ def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
     def create_run(draft: Draft) -> dict:
         from ..orchestrator.run import PoolShortfall, init_run
 
+        if draft.pilot:
+            draft = draft.model_copy(update={
+                "run_id": draft.run_id + PILOT_SUFFIX, "n_meetings": min(draft.n_meetings, PILOT_MEETINGS),
+                "overrides": {**draft.overrides, "phases.wave_size": PILOT_MEETINGS}, "pilot": False})
         if not RUN_ID.match(draft.run_id):
             raise _error(422, "Run ids use letters, digits, dot, dash and underscore, and start with a letter or digit.",
                          [{"loc": "run_id", "msg": "not a valid run id"}])
@@ -233,6 +248,57 @@ def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
         if not background.stop(rp.run_dir):
             raise _error(409, f"{run_id} is not running.")
         return process_info(run_id)
+
+    @app.delete("/api/runs/{run_id}", status_code=204)
+    def delete_pilot(run_id: str) -> None:
+        """Delete a pilot run (only a `-pilot` run that is not running): its meetings were for listening only."""
+        import shutil
+
+        rp = runs.run(run_id)
+        if not run_id.endswith(PILOT_SUFFIX):
+            raise _error(409, "Only pilot runs can be deleted here.")
+        if background.running(rp.run_dir):
+            raise _error(409, f"{run_id} is running. Stop it first.")
+        shutil.rmtree(rp.run_dir)
+
+    @app.post("/api/runs/{run_id}/meetings/{meeting_id}/voice-swap")
+    def voice_swap(run_id: str, meeting_id: str, body: VoiceSwapIn) -> dict:
+        """Give one speaker of one meeting another voice: a same-split speaker with the same gender and ethnicity
+        (first language and age band when possible), the swap stage 5 would make. Stage 4 re-synthesises that
+        speaker on the next start, and the later stages follow; nothing else in the run changes."""
+        import json
+
+        from ..artifacts.io import read_model
+        from ..artifacts.models import SpeakerSplits
+        from ..artifacts.voice import ReferenceSwap, Synthesis
+        from ..config.schema import StageId
+        from ..nsc.references import references_for
+        from ..orchestrator.status import StatusStore
+
+        mp = runs.meeting(run_id, meeting_id)
+        rp = runs.run(run_id)
+        if background.running(rp.run_dir):
+            raise _error(409, f"{run_id} is running. Stop it first, or wait for it to finish.")
+        if not mp.synthesis.is_file():
+            raise _error(409, f"{meeting_id} has no voices yet.")
+        syn = read_model(mp.synthesis, Synthesis)
+        va = syn.voices.get(body.speaker_id)
+        if va is None:
+            raise _error(404, f"{meeting_id} has no speaker {body.speaker_id}.")
+        cfg = run_config(rp.run_dir)
+        refs = references_for(cfg)
+        splits = read_model(rp.speaker_splits, SpeakerSplits)
+        in_use = {v.nsc_speaker for v in syn.voices.values()} | {x for s in syn.swaps
+                                                                  for x in (s.from_speaker, s.to_speaker)}
+        new = refs.replacement(va.nsc_speaker, splits, in_use)
+        if new is None:
+            raise _error(409, "No other voice in this split matches the speaker's gender and ethnicity.")
+        swap = ReferenceSwap(speaker_id=body.speaker_id, kind="speaker", from_speaker=va.nsc_speaker,
+                             to_speaker=new, from_clip=va.clip_id, to_clip=refs.best(new).pair_id,
+                             reason="asked for in review")
+        StatusStore(rp.run_dir).update(meeting_id, StageId.VOICE, state="retry",
+                                       feedback=json.dumps({"resynth": [], "swaps": [swap.model_dump()]}))
+        return {"swap": swap.model_dump(), "next": "start the run to re-synthesise this speaker"}
 
     @app.post("/api/runs/{run_id}/review")
     def review_meeting(run_id: str, body: ReviewIn) -> dict:

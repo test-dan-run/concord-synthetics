@@ -195,7 +195,8 @@ def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None,
             cfg = read_yaml(rp.config)
             out.append({"id": rid, "meetings": len(rp.meeting_ids()), "done": len(manifest_entries(rp)),
                         "seed": cfg.get("seed"), "n_meetings": cfg.get("n_meetings"), "config_hash": config_hash(cfg),
-                        "revision": cfg.get("revision", 1), "updated": rp.config.stat().st_mtime})
+                        "revision": cfg.get("revision", 1), "updated": rp.config.stat().st_mtime,
+                        "pilot": rid.endswith("-pilot")})
         return out
 
     @app.get("/api/runs/{run_id}/config")
