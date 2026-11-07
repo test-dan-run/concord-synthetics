@@ -3,6 +3,7 @@ phases:
   platform_dir: ../../platform
   no_evict: false
   lease_timeout_s: 1800
+  wave_size: 10   # meetings per wave; each wave runs all eight stages, so its meetings can be reviewed early
   phases:
     A: {roles: [generator], batch_size: 20, max_rounds: 3}
     B: {roles: [judge_primary], batch_size: 20, max_rounds: 3}

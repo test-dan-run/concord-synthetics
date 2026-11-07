@@ -141,3 +141,25 @@ def test_a_killed_run_keeps_the_phase_time_it_spent(tmp_path, monkeypatch):
     assert recorded >= {"CPU", "A", "B", "C"}, recorded  # phase C's first meeting was recorded before the kill
     rep = write_run_report(rd)
     assert rep["phase_seconds"]["A"] >= 100.0 and rep["phase_seconds"]["C"] > 0
+
+
+def test_waves_lease_each_phase_per_wave_and_give_the_same_meetings(tmp_path):
+    from synthetics.artifacts.paths import RunPaths
+
+    def leases_of(rd, cfg):
+        leases = []
+
+        def factory(services, **kw):
+            leases.append(tuple(services))
+            return GpuLease(services, **{**kw, "enabled": False})
+
+        PhaseScheduler(rd, cfg, lease_factory=factory).run_waves(until=StageId.SCRIPT_VAL)
+        return leases
+
+    rd1, cfg1 = fake_run(tmp_path / "one", n=3, **{"phases.wave_size": None})
+    rd2, cfg2 = fake_run(tmp_path / "waves", n=3, **{"phases.wave_size": 2})
+    assert len(leases_of(rd1, cfg1)) == 2 and len(leases_of(rd2, cfg2)) == 4  # A and B, once per wave
+    for mid in RunPaths(rd1).meeting_ids():
+        a, b = RunPaths(rd1).meeting(mid), RunPaths(rd2).meeting(mid)
+        assert a.script.read_bytes() == b.script.read_bytes()
+    assert leases_of(rd2, cfg2) == [], "a resume skips finished waves"

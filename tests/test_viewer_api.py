@@ -122,3 +122,27 @@ def test_the_built_frontend_is_served_but_never_shadows_the_api(runs_root, tmp_p
     assert c.get("/assets/app.js").text == "console.log(1)"
     assert c.get("/api/nothing").status_code == 404
     assert c.get("/../../etc/passwd").text.startswith("<!doctype")
+
+
+def test_audio_is_served_from_a_whitelist_with_byte_ranges(client):
+    base = "/api/runs/t/meetings/m-000001/audio"
+    r = client.get(f"{base}/mixture.wav")
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/wav" and r.content[:4] == b"RIFF"
+    part = client.get(f"{base}/mixture.wav", headers={"Range": "bytes=0-99"})
+    assert part.status_code == 206 and len(part.content) == 100
+    assert client.get(f"{base}/tracks/S01.wav").status_code == 200
+    for bad in ("../../config.yaml", "..%2Fmeeting.json", "status.json", "tracks/S01.flac", "tracks%2F..%2Fstatus.json",
+                "stems/S01.wav"):  # stems: not written by this run
+        assert client.get(f"{base}/{bad}").status_code == 404, bad
+
+
+def test_review_marks_round_trip_and_never_touch_results(client, runs_root):
+    before = sorted(p.name for p in (runs_root / "t/meetings/m-000001").rglob("*"))
+    assert client.get("/api/runs/t/review").json() == {}
+    r = client.post("/api/runs/t/review", json={"meeting_id": "m-000001", "decision": "exclude", "note": "muffled"})
+    assert r.status_code == 200 and r.json()["m-000001"]["decision"] == "exclude"
+    assert client.get("/api/runs/t/review").json()["m-000001"]["note"] == "muffled"
+    client.post("/api/runs/t/review", json={"meeting_id": "m-000001", "decision": None})
+    assert client.get("/api/runs/t/review").json() == {}
+    assert client.post("/api/runs/t/review", json={"meeting_id": "m-999999", "decision": "keep"}).status_code == 404
+    assert sorted(p.name for p in (runs_root / "t/meetings/m-000001").rglob("*")) == before

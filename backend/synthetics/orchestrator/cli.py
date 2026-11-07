@@ -111,7 +111,7 @@ def run(run: RunOpt,
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    rep = sched.run(until=StageId(until), only=Phase(only) if only else None)
+    rep = sched.run_waves(until=StageId(until), only=Phase(only) if only else None)
     write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId(until)), indent=2))
 
@@ -123,7 +123,7 @@ def resume(run: RunOpt, keep_services: Annotated[bool, typer.Option()] = False):
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    rep = sched.run(until=StageId.LABELS)
+    rep = sched.run_waves(until=StageId.LABELS)
     write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId.LABELS), indent=2))
 

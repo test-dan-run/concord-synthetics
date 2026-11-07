@@ -19,7 +19,7 @@ applied in that order over the defaults, exactly as `init-run --set` and `--conf
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from fastapi import FastAPI, HTTPException
@@ -49,6 +49,12 @@ class Draft(BaseModel):
 
 class StartRequest(BaseModel):
     confirm: bool = False  # required for a run that leases GPU services
+
+
+class ReviewIn(BaseModel):
+    meeting_id: str
+    decision: Literal["keep", "exclude"] | None
+    note: str = Field("", max_length=500)
 
 
 def _error(status: int, message: str, errors: list[dict] | None = None) -> HTTPException:
@@ -227,3 +233,25 @@ def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
         if not background.stop(rp.run_dir):
             raise _error(409, f"{run_id} is not running.")
         return process_info(run_id)
+
+    @app.post("/api/runs/{run_id}/review")
+    def review_meeting(run_id: str, body: ReviewIn) -> dict:
+        """Mark a meeting kept or left out of the export (`decision: null` clears the mark). review.json sits
+        beside the run's results and nothing in the pipeline reads it, so a mark never changes a meeting."""
+        import json
+        import time
+
+        from ..artifacts.io import atomic_write_text
+        from .api import REVIEW
+
+        runs.meeting(run_id, body.meeting_id)  # 404 for an unknown run or meeting
+        rp = runs.run(run_id)
+        f = rp.run_dir / REVIEW
+        marks = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        if body.decision is None:
+            marks.pop(body.meeting_id, None)
+        else:
+            marks[body.meeting_id] = {"decision": body.decision, "note": body.note,
+                                      "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+        atomic_write_text(f, json.dumps(dict(sorted(marks.items())), indent=2) + "\n")
+        return marks

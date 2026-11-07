@@ -322,6 +322,10 @@ class PhasesConfig(_M):
     platform_dir: Path = Path("../../platform")
     no_evict: bool = False
     lease_timeout_s: int = 1800
+    # Meetings per wave: each wave goes through all eight stages before the next starts, so finished meetings can
+    # be reviewed early, at the cost of leasing every GPU phase once per wave. None: the whole run in one wave.
+    # Orchestration only: results do not depend on it, since every draw is seeded per meeting and stage.
+    wave_size: int | None = Field(None, ge=1)
 
 
 ETHNICITIES = ("CHINESE", "MALAY", "INDIAN", "OTHERS")  # as the NSC speaker sheet writes them
