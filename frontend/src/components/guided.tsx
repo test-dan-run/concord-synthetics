@@ -66,7 +66,9 @@ let current: HTMLAudioElement | null = null;
 export function PlayClip({ src, label, text }: { src: string; label: string; text?: string }) {
   const [playing, setPlaying] = useState(false);
   const ref = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => () => ref.current?.pause(), []);
+  useEffect(() => () => {
+    ref.current?.pause();
+  }, []);
   const toggle = () => {
     if (!ref.current) {
       ref.current = new Audio(src);
@@ -204,7 +206,9 @@ export function ChatPanel({
 }) {
   const [text, setText] = useState("");
   const end = useRef<HTMLLIElement>(null);
-  useEffect(() => end.current?.scrollIntoView?.({ block: "nearest" }), [messages.length]);
+  useEffect(() => {
+    void end.current?.scrollIntoView?.({ block: "nearest" }); // a Promise in some browsers: never an effect cleanup
+  }, [messages.length]);
   const send = (e: FormEvent) => {
     e.preventDefault();
     if (!text.trim() || busy) return;

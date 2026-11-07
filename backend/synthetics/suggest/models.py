@@ -95,8 +95,20 @@ def _raw(text: str) -> set[str]:
     return {w[:6] for w in re.findall(r"[a-z]+", text.lower())}
 
 
+_STOP |= {"mostly", "only", "just", "even", "some", "all", "every", "everyone", "really", "very", "kind", "lah"}
+# a few everyday words for the option labels' terms, so "big boardrooms" reads as large rooms
+SYNONYMS = {"big": "large", "boardr": "large", "huge": "large", "tiny": "small", "dry": "fake", "models": "gpu",
+            "zoom": "remote", "teams": "remote", "dialli": "remote", "aircon": "noise", "noisy": "noise",
+            "echoey": "echo", "crossta": "overlap"}
+
+
 def _words(text: str) -> set[str]:
-    return {w[:6] for w in re.findall(r"[a-z]+", text.lower()) if w not in _STOP and len(w) > 2}
+    ws = {w[:6] for w in re.findall(r"[a-z]+", text.lower()) if w not in _STOP and len(w) > 2}
+    return ws | {SYNONYMS[w] for w in ws if w in SYNONYMS}
+
+
+def _clauses(text: str) -> list[str]:
+    return [c for c in re.split(r"[,.;!?\n]| and | but | with ", text) if c.strip()]
 
 
 UP = _raw("more lot lots many heavy heavily frequent usually most mostly noisier noisy louder bigger larger "
@@ -115,6 +127,7 @@ class FakeDecisionModel:
         self.cues: dict[str, set[str]] = {}
         for g in self.qs.groups:
             self.cues[g.gate.strip()] = _words(g.gate + " " + " ".join(g.examples))
+            self.cues[g.question.strip()] = self.cues[g.gate.strip()]  # a choice reads the clauses its gate matched
         for gq in self.qs.global_:
             self.cues[gq.question.strip()] = _words(gq.question)
         self.globals = {gq.question.strip() for gq in self.qs.global_}
@@ -129,6 +142,12 @@ class FakeDecisionModel:
             else:
                 yes = bool(req & self.cues.get(question.strip(), set()))
             return [0.9, 0.1] if yes else [0.1, 0.9]
+        cues = self.cues.get(question.strip())
+        if cues:  # only the parts of the request about this question set its direction
+            about = [c for c in _clauses(request) if _words(c) & cues]
+            if about:
+                request = " ".join(about)
+                req = _words(request)
         raw = _raw(request)
         up, down = bool(raw & UP), bool(raw & DOWN)
         # direction words only steer a scale (options going both ways), never a global question

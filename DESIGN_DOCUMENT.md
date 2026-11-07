@@ -267,6 +267,11 @@ Each stage reads earlier stages' files, writes its own, and records a pass, fail
   paper) relative to the speech level.
 - Apply the device chain: band limit, AGC, clipping, then the Opus codec on the single channel. Remote participants
   first pass through their own band limit and codec, and hybrid meetings get echo-cancellation artifacts.
+- With `simulation.write_stems` (on for new runs), also write each speaker as heard at the mic and the noise alone.
+  Every convolved segment is added both to the mix, in the same order as without stems, and to the speaker's own
+  buffer, so the mixture is identical either way. Stems get the mixture's band limit, gains and AGC gain curve but
+  not clipping or the codec, so the speakers plus the noise add up to the recording before those two: the
+  separation targets for real conditions.
 
 ### Stage 8: Labels and packaging
 
@@ -333,12 +338,18 @@ Design principles:
 - **Switchable components.** Stages 3, 5 and 7 can be switched off, and the switches are recorded in the manifest
   (`stages_enabled`), so the fine-tuning team can run ablations. A switched-off stage is recorded as skipped and
   later stages go on without its output.
-- **Fixed split assignment.** A pool of 175 NSC Part 3 speakers has fixed splits (50 train, 25 dev, 100 test) in
-  `data/nsc_part3_reference_speakers.csv`. Each run copies them into `speaker_splits.json`, and a meeting only
-  clones voices from its own split, so splits are speaker-disjoint within and across runs. Partners who recorded
-  together are always in the same split. By ethnicity, train has 25 Chinese, 13 Malay and 12 Indian speakers,
-  dev has 13, 6 and 6, and test has 48, 25 and 22 plus 5 Others, which bounds how far an ethnicity mix can skew
-  a meeting.
+- **Fixed split assignment.** Every speaker has one split for good, in a pinned pool CSV. Each run copies the
+  splits into `speaker_splits.json`, and a meeting only clones voices from its own split, so splits are
+  speaker-disjoint within and across runs. Partners who recorded together are always in the same split. The first
+  pool, `data/nsc_part3_reference_speakers.csv`, has 175 NSC Part 3 speakers (50 train, 25 dev, 100 test).
+  New runs use `data/pools/p3-406-v2.csv`, grown by `synthetics pool build` from the curated voice folder
+  `/home/user/code/datasets/nsc-part3-voices`: 406 speakers, 170 train, 58 dev and 178 test. Growing a pool keeps
+  every earlier speaker's split, puts a new speaker whose partner is in the pool in the partner's split, and spreads
+  the rest by the meeting split mix (70/15/15), balanced within each gender and ethnicity group, with a seeded draw.
+  A pool is never rewritten; its sidecar (`<version>.json`) records the counts validation checks and where it came
+  from, and runs on it clone from that folder's clips (`speaker_pool.refs_index`). By ethnicity, the grown pool's
+  train has 107 Chinese, 31 Malay and 32 Indian speakers, dev has 35, 11 and 12, and test has 97, 47 and 29 plus 5
+  Others, which bounds how far an ethnicity mix can skew a meeting.
 - **Typed config and artifacts.** Pydantic models validate the run config and every file in the run directory.
   Every distribution is a small typed object (uniform, log-normal, Bernoulli, categorical, Zipf) set in YAML.
 
@@ -443,8 +454,11 @@ utterances kept after failing every attempt, about 1% of all utterances.
 
 ## GPU phases and orchestration
 
-The pipeline runs stage by stage across all meetings of a run, so only one phase's models occupy the 32 GB GPU at
-a time.
+The pipeline runs stage by stage across all meetings of a wave, so only one phase's models occupy the 32 GB GPU at
+a time. A wave is `phases.wave_size` meetings (10 for new runs; a run without the setting is one wave), and each
+wave goes through all eight stages before the next starts, so the first meetings can be reviewed hours before the
+last. Each wave leases every GPU phase once, which costs the leases' start times; results do not depend on waves,
+because every draw is seeded per meeting and stage.
 
 | Phase | Services loaded together | Retry handling |
 | --- | --- | --- |
@@ -470,6 +484,12 @@ Orchestration:
   other projects' services. In fake and replay modes there is no lease.
 - **Local weights.** Weights live in the platform's store, `$AI_ASSETS`, which every service mounts, so cold
   starts don't download and other apps can reuse the models.
+- **Decision model.** The viewer turns a user's words into settings with a compact model on the CPU (LFM2.5-350M
+  on llama.cpp, the `decision` role), so it answers while a GPU phase holds the card. It never writes a value: it
+  gives a probability for each option of the yes/no and multiple-choice questions in `suggest/questions.yaml`, and
+  code applies the chosen options' effects, clamped to the file's bounds. Confident answers apply, uncertain ones
+  are offered as a choice, and stage switches and backends are only ever asked. `synthetics suggest-eval` scores a
+  model on labelled requests.
 - **Execution.** One meeting and one request at a time, with `status.json` deciding what is left. Correctness comes
   before speed, and the stage interfaces keep any future concurrency confined to the scheduler and the backend
   clients. The 20-meeting reference run `m9-e2e` took about 9 hours, the largest share in phase C, and `resume` makes

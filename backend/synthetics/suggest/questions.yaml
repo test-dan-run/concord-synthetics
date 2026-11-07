@@ -543,9 +543,9 @@ groups:
       Race is the NSC speaker sheet's ethnicity. It sets the voice and so its accent, the persona's name and the
       languages they mix in, so "more Tamil" means more Indian speakers (only some of them have Tamil as a first
       language). Every value is a share of all speakers. Others exist only in the test split (5 voices), so their
-      share applies to test meetings only. A single race cannot fill the largest meetings of most splits (train has
-      13 Malay and 12 Indian voices, dev has 6 of each), so those options always ask the user, and the preview names
-      the shortfall; fewer people or a test-heavy split mix fixes it.
+      share applies to test meetings only. A single race may not fill the largest meetings of every split (in the
+      p3-406-v2 pool dev has 11 Malay and 12 Indian voices), so those options always ask the user, and the preview
+      names the shortfall; fewer people or another split mix fixes it.
 
   - id: splits
     gate: "Does the request say whether the data is for training, validation or testing?"
@@ -563,7 +563,7 @@ groups:
       - id: evaluation
         label: "Mostly test"
         effects: [{path: speaker_pool.split_mix, op: weights, value: {train: 0.0, dev: 0.2, test: 0.8}}]
-    note: "The test split has the most NSC speakers (100), so a test-heavy run still has varied voices."
+    note: "Train and test both have many voices in the p3-406-v2 pool (170 and 178), so either kind of run has varied voices."
 
   - id: stages
     gate: "Does the request explicitly ask to skip script judging, voice checks or the room simulation?"
