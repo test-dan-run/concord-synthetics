@@ -1,0 +1,18 @@
+{
+  "version": "p3-406-v2",
+  "counts": {
+    "train": 170,
+    "dev": 58,
+    "test": 178
+  },
+  "base": "p3-175-v1",
+  "base_sha256": "d5706e38e2317a4b1e1ca7d53acdcd1e1dfd7baedf98d60a5367165272088727",
+  "source": "/home/user/code/datasets/nsc-part3-voices",
+  "refs_index": "/home/user/code/datasets/nsc-part3-voices/manifest.jsonl",
+  "seed": 2026,
+  "split_mix": {
+    "train": 0.7,
+    "dev": 0.15,
+    "test": 0.15
+  }
+}

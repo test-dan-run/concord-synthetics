@@ -40,9 +40,10 @@ thresholds:
     max_words_backchannel: 4
     max_unknown_tags: 0
 speaker_pool:
-  path: data/nsc_part3_reference_speakers.csv
-  version: p3-175-v1
+  path: data/pools/p3-406-v2.csv   # 406 NSC Part 3 speakers; the first pool's 175 keep their splits
+  version: p3-406-v2
   split_mix: {dist: categorical, weights: {train: 0.7, dev: 0.15, test: 0.15}}
   ethnicity_mix: null      # target share of speakers per ethnicity (CHINESE, MALAY, INDIAN, OTHERS); null follows the pool
+  refs_index: /home/user/code/datasets/nsc-part3-voices/manifest.jsonl   # the clips this pool clones from
 lexicon:
   path: backend/synthetics/config/defaults/singlish_lexicon.yaml

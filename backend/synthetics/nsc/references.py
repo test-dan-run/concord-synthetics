@@ -1,9 +1,13 @@
-"""Clean NSC reference clips for stage 4 (§4.3): `nsc-part3-refs/clean/index.jsonl`, written once by
-`synthetics nsc clean` and shared by every run.
+"""Clean NSC reference clips for stage 4 (§4.3), shared by every run.
 
-Each speaker keeps its top few clips by MOS. Stage 4 clones every utterance of a speaker from one clip (the best
-by default); swaps go to the next clip of the same speaker, then to another same-split speaker whose sheet row
-matches (gender and ethnicity always, first language and age band when possible).
+Two layouts are read. `nsc-part3-refs/clean/index.jsonl`, written once by `synthetics nsc clean`, serves runs whose
+config leaves `speaker_pool.refs_index` unset. A voice folder's `manifest.jsonl` (the `nsc-part3-voices` layout:
+`clip_id`, `audio`, `mos` per clip) serves runs that name it there, which is how a grown pool reaches its new
+speakers' clips.
+
+Each speaker keeps its top few clips by MOS. Stage 4 clones every utterance of a speaker from one clip: the clip the
+pool names in `main_clip`, else the best by MOS. Swaps go to the next clip of the same speaker, then to another
+same-split speaker whose sheet row matches (gender and ethnicity always, first language and age band when possible).
 """
 
 from __future__ import annotations
@@ -52,6 +56,26 @@ class ReferenceIndex:
     @classmethod
     def load(cls, paths: NscPaths) -> ReferenceIndex:
         return _load(str(paths.clean_index), str(paths.refs_dir))
+
+    @classmethod
+    def load_manifest(cls, path: Path) -> ReferenceIndex:
+        """A voice folder's manifest.jsonl; clip paths are relative to the folder."""
+        return _load(str(path), str(Path(path).parent))
+
+    def with_main_clips(self, main: dict[str, str]) -> ReferenceIndex:
+        """The same clips with each named clip first for its speaker. The choice joins the cache-key hash, so a
+        run that changes it re-runs stages 4 and 5; with no choices the index is returned unchanged."""
+        if not main:
+            return self
+        for speaker, clip in main.items():
+            if clip not in {c.pair_id for c in self._by_speaker.get(speaker, [])}:
+                raise KeyError(f"main clip {clip} of {speaker} is not in the clean index")
+        out = ReferenceIndex([], hashlib.sha256(
+            (self.sha256 + json.dumps(main, sort_keys=True)).encode()).hexdigest()[:16])
+        out._by_id = dict(self._by_id)
+        out._by_speaker = {s: (sorted(v, key=lambda c: c.pair_id != main[s]) if s in main else list(v))
+                           for s, v in self._by_speaker.items()}
+        return out
 
     def speakers(self) -> list[str]:
         return sorted(self._by_speaker)
@@ -114,12 +138,34 @@ def _load(index_path: str, refs_dir: str) -> ReferenceIndex:
         if not line.strip():
             continue
         r = json.loads(line)
+        if "clip_id" in r:  # voice folder layout
+            r = {**r, "pair_id": r["clip_id"], "clip": r["audio"], "raw_clip": r.get("audio_raw"),
+                 "split": r.get("synthetics_split") or ""}
         clips.append(RefClip(speaker=r["speaker"], pair_id=r["pair_id"], path=Path(refs_dir) / r["clip"], text=r["text"],
                              duration=float(r["duration"]), mos=r.get("mos"), gender=r.get("gender", ""),
                              age=r.get("age", ""), ethnicity=r.get("ethnicity", ""),
                              first_language=r.get("first_language", ""), split=r.get("split", ""),
                              raw_path=Path(refs_dir) / r["raw_clip"] if r.get("raw_clip") else None))
     return ReferenceIndex(clips, hashlib.sha256(raw).hexdigest()[:16])
+
+
+def references_for(cfg) -> ReferenceIndex:
+    """The clean clips a run clones from: its `speaker_pool.refs_index` manifest when set, else the shared
+    nsc-part3-refs index, with the pool's main-clip choices applied."""
+    from ..orchestrator.run import app_path
+    from .settings import nsc_paths
+
+    sp = cfg.speaker_pool
+    idx = ReferenceIndex.load(nsc_paths()) if sp.refs_index is None else \
+        ReferenceIndex.load_manifest(app_path(sp.refs_index))
+    return idx.with_main_clips(_main_clips(str(app_path(sp.path))))
+
+
+@lru_cache(maxsize=8)
+def _main_clips(pool_path: str) -> dict[str, str]:
+    from .pool import main_clips
+
+    return main_clips(Path(pool_path))
 
 
 @lru_cache(maxsize=64)

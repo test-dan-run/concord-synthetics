@@ -334,6 +334,9 @@ class SpeakerPoolConfig(_M):
     # meeting's split still has speakers for, then a speaker of that group; a group left out or at 0 never appears.
     # None draws every seat evenly from the split's speakers, so the mix follows the pool.
     ethnicity_mix: Categorical | None = None
+    # The clip manifest the run clones from (a voice folder's manifest.jsonl). None: the shared nsc-part3-refs
+    # index, as every run before grown pools used.
+    refs_index: Path | None = None
 
     @model_validator(mode="after")
     def _known_ethnicities(self) -> SpeakerPoolConfig:

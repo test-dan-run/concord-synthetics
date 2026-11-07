@@ -11,7 +11,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from conftest import ROOT
+from conftest import V1_POOL
 from synthetics.artifacts.io import read_model, write_model
 from synthetics.artifacts.meeting import MeetingSpec
 from synthetics.artifacts.models import RunProcess
@@ -19,7 +19,7 @@ from synthetics.artifacts.paths import RunPaths
 from synthetics.orchestrator import background
 from synthetics.viewer.api import create_app
 
-POOL = {"speaker_pool.path": str(ROOT / "data/nsc_part3_reference_speakers.csv")}
+POOL = V1_POOL
 FAKE = {**POOL, "backends.mode": "fake"}
 
 

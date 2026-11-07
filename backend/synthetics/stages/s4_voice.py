@@ -25,8 +25,7 @@ from ..artifacts.models import Script, Turn
 from ..artifacts.voice import ReferenceSwap, Synthesis, UtteranceSynth, VoiceAssignment
 from ..backends.base import Audio, VoiceRef
 from ..config.schema import Phase, Role, RunConfig, StageId
-from ..nsc.references import ReferenceIndex
-from ..nsc.settings import nsc_paths
+from ..nsc.references import ReferenceIndex, references_for
 from ..text.singlish import Lexicon, tts_input
 from ..voice.audio_ops import join, match_level, rms, trim
 from ..voice.nonlexical import SYNTH_VERSION, SoundLibrary, synthetic
@@ -113,7 +112,7 @@ class VoiceStage:
                             max_tts_chars=v.max_tts_chars, piece_gap_s=v.piece_gap_s, trim_pad_s=v.trim_pad_s,
                             trim_db=v.trim_db, nonlexical_tts=v.nonlexical_tts,
                             lexicon_version=Lexicon.load(cfg.lexicon.path).version,
-                            refs_index=ReferenceIndex.load(nsc_paths()).sha256,
+                            refs_index=references_for(cfg).sha256,
                             sound_library=f"{SoundLibrary.load().version}+{SYNTH_VERSION}")
 
     def run(self, ctx: StageContext) -> StageResult:
@@ -122,7 +121,7 @@ class VoiceStage:
         script = read_model(paths.script, Script)
         sha = file_sha256(paths.script)
         lex = Lexicon.load(cfg.lexicon.path)
-        refs = ReferenceIndex.load(nsc_paths())
+        refs = references_for(cfg)
         lib = SoundLibrary.load()
         resynth, new_swaps = parse_feedback(ctx.feedback)
 

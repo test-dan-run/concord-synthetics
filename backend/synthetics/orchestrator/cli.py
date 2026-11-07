@@ -14,6 +14,8 @@ from ..config.schema import Phase, StageId
 app = typer.Typer(no_args_is_help=True, add_completion=False, help=__doc__)
 nsc_app = typer.Typer(no_args_is_help=True, help="NSC Part 3 reference data.")
 app.add_typer(nsc_app, name="nsc")
+pool_app = typer.Typer(no_args_is_help=True, help="Voice pools: grow one from a voice folder, check one.")
+app.add_typer(pool_app, name="pool")
 
 RunOpt = Annotated[str, typer.Option("--run", "-r", help="run id under SYNTHETICS_RUNS, or a run directory")]
 
@@ -336,16 +338,57 @@ def calibrate_sv(out: Annotated[Path, typer.Option(help="YAML overlay to write")
 # ---------------------------------------------------------------- NSC
 
 
+@pool_app.command("build")
+def pool_build(source: Annotated[Path, typer.Option("--from", help="voice folder (speakers.csv, manifest.jsonl)")],
+               version: Annotated[str, typer.Option(help="new pool version, e.g. p3-406-v2")],
+               base: Annotated[Path, typer.Option(help="pool CSV to grow")] = Path(
+                   "data/nsc_part3_reference_speakers.csv"),
+               base_version: Annotated[str, typer.Option(help="its version, when it has no sidecar")] = "p3-175-v1",
+               seed: Annotated[int, typer.Option()] = 2026,
+               out: Annotated[Path | None, typer.Option(help="default data/pools/<version>.csv")] = None):
+    """Grow a pool: base speakers keep their split, partners share one, the rest follow the meeting split mix."""
+    from ..config.loader import load_run_config
+    from ..nsc.pool_build import base_version_of, draft_pool, publish
+    from .run import app_path
+
+    mix = load_run_config(overrides={"run_id": "pool", "seed": 1, "n_meetings": 1}).speaker_pool.split_mix.weights
+    mix = {str(k): float(v) for k, v in mix.items()}
+    base_path = app_path(base)
+    out_path = app_path(out or Path(f"data/pools/{version}.csv"))
+    if out_path.exists():
+        typer.echo(f"{out_path} exists; pools are never rewritten, pick a new version")
+        raise typer.Exit(1)
+    d = draft_pool(base_path, source, split_mix=mix, seed=seed)
+    meta = publish(d, out_path, version=version, base_path=base_path,
+                   base_version=base_version_of(base_path, base_version), folder=source, seed=seed, split_mix=mix)
+    typer.echo(json.dumps({"pool": str(out_path), "speakers": meta.total, "counts": meta.counts,
+                           "added": len(d.added), "by_partner": len(d.forced), "left_out": d.left_out}, indent=2))
+
+
+@pool_app.command("validate")
+def pool_validate(path: Annotated[Path, typer.Argument(help="pool CSV")] = Path(
+                      "data/nsc_part3_reference_speakers.csv"),
+                  nsc_dir: Annotated[Path | None, typer.Option(help="also check every SDM zip is here")] = None):
+    """Check a pool against its sidecar's counts (the first pool: 175 speakers), plus partner pairs."""
+    from ..nsc.pool import check_pool
+    from .run import app_path
+
+    problems = check_pool(app_path(path), nsc_dir)
+    for p in problems:
+        typer.echo(f"problem: {p}")
+    typer.echo("pool ok" if not problems else f"{len(problems)} problem(s)")
+    raise typer.Exit(0 if not problems else 1)
+
+
 @nsc_app.command("validate")
 def nsc_validate(nsc_dir: Annotated[Path | None, typer.Option(help="NSC Part 3 root (holds SDM/)")] = None):
     """Check the pool CSV: 175 unique speakers, every zip present, split sizes, partner pairs."""
-    from ..nsc.pool import load_pool, validate_pool
+    from ..nsc.pool import check_pool
     from ..nsc.settings import nsc_paths
     from .run import app_path
 
     paths = nsc_paths(nsc_dir)
-    pool = load_pool(app_path("data/nsc_part3_reference_speakers.csv"))
-    problems = validate_pool(pool, paths.nsc_dir)
+    problems = check_pool(app_path("data/nsc_part3_reference_speakers.csv"), paths.nsc_dir)
     for p in problems:
         typer.echo(f"problem: {p}")
     typer.echo("pool ok" if not problems else f"{len(problems)} problem(s)")
