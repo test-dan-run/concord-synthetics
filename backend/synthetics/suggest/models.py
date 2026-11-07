@@ -142,6 +142,7 @@ class FakeDecisionModel:
             else:
                 yes = bool(req & self.cues.get(question.strip(), set()))
             return [0.9, 0.1] if yes else [0.1, 0.9]
+        whole = _raw(request)
         cues = self.cues.get(question.strip())
         if cues:  # only the parts of the request about this question set its direction
             about = [c for c in _clauses(request) if _words(c) & cues]
@@ -149,6 +150,8 @@ class FakeDecisionModel:
                 request = " ".join(about)
                 req = _words(request)
         raw = _raw(request)
+        if not raw & (UP | DOWN):  # the clause has no direction of its own: the request's
+            raw = whole
         up, down = bool(raw & UP), bool(raw & DOWN)
         # direction words only steer a scale (options going both ways), never a global question
         scale = any(_raw(o) & UP for o in options) and any(_raw(o) & DOWN for o in options)

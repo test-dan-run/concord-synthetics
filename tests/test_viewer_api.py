@@ -130,9 +130,10 @@ def test_audio_is_served_from_a_whitelist_with_byte_ranges(client):
     assert r.status_code == 200 and r.headers["content-type"] == "audio/wav" and r.content[:4] == b"RIFF"
     part = client.get(f"{base}/mixture.wav", headers={"Range": "bytes=0-99"})
     assert part.status_code == 206 and len(part.content) == 100
-    assert client.get(f"{base}/tracks/S01.wav").status_code == 200
+    for ok in ("tracks/S01.wav", "stems/S01.wav", "noise.wav"):  # new runs write stems and the noise
+        assert client.get(f"{base}/{ok}").status_code == 200, ok
     for bad in ("../../config.yaml", "..%2Fmeeting.json", "status.json", "tracks/S01.flac", "tracks%2F..%2Fstatus.json",
-                "stems/S01.wav"):  # stems: not written by this run
+                "stems/S99.wav"):
         assert client.get(f"{base}/{bad}").status_code == 404, bad
 
 

@@ -197,7 +197,7 @@ def test_background_main_records_how_the_run_ended(tmp_path, monkeypatch, raised
         def __init__(self, *a, **kw):
             pass
 
-        def run(self, **kw):
+        def run_waves(self, **kw):
             if raised is not None:
                 raise raised
             return scheduler.RunReport()

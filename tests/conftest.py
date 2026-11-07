@@ -34,7 +34,7 @@ def splits(cfg):
 
 ALWAYS = {"dist": "bernoulli", "p": 1.0}
 # large hybrid rooms with presenters and wall seats by choice, so every position type the viewer draws is present
-VIEWER_RUN = {"simulation.noise_library": None,
+VIEWER_RUN = {"simulation.noise_library": None, "simulation.write_stems": True,
               "room_classes.ratio": {"dist": "categorical", "weights": {"small": 0.0, "large": 1.0}},
               "room_classes.classes.large.speakers": {"dist": "int_uniform", "lo": 7, "hi": 9},
               "acoustics.hybrid": {"small": ALWAYS, "large": ALWAYS},

@@ -18,6 +18,7 @@ def fake_run(tmp_path: Path, n: int = 2, seed: int = 11, **overrides):
     base = {"backends.mode": "fake",
             "thresholds.sv_pair_max": {"sv_wavlm": 0.85, "sv_redimnet": 0.75},
             "thresholds.mos_drop_max": 5.0,
+            "simulation.write_stems": False,  # stems double the audio a fake run writes; tests that need them say so
             **V1_POOL,
             "lexicon.path": str(ROOT / "backend/synthetics/config/defaults/singlish_lexicon.yaml"),
             "dynamics.duration_min": {"small": {"dist": "uniform", "lo": 4, "hi": 6},
