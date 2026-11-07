@@ -154,23 +154,31 @@ def _matches(s: dict, *, room_class: str | None, split: str | None, min_speakers
 
 
 def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None, *, read_only: bool = False,
-               start=None) -> FastAPI:
-    """`read_only` leaves out the run builder; `start` replaces the background launcher (tests)."""
+               admin: bool = False, pools_dir: Path | None = None, start=None) -> FastAPI:
+    """`read_only` leaves out the run builder; `admin` adds the speaker pool admin routes (never with
+    `read_only`); `start` replaces the background launcher (tests)."""
     from ..orchestrator.run import APP_ROOT
     from ..orchestrator.run import runs_root as default_root
 
     runs = Runs(runs_root or default_root())
     app = FastAPI(title="Synthetics viewer", version="0.2.0")
     app.state.runs = runs
+    admin = admin and not read_only
 
     @app.get("/api/viewer")
     def viewer_info() -> dict:
-        return {"read_only": read_only, "runs_root": str(runs.root)}
+        return {"read_only": read_only, "admin": admin, "runs_root": str(runs.root)}
 
     if not read_only:
         from . import builder
 
         builder.add_routes(app, runs, **({"start": start} if start else {}))
+    if admin:
+        from ..config.loader import load_run_config
+        from . import admin as admin_routes
+
+        admin_routes.add_routes(app, runs.root, lambda: load_run_config(
+            overrides={"run_id": "admin", "seed": 1, "n_meetings": 1}), pools_dir)
 
     @app.get("/api/runs")
     def list_runs() -> list[dict]:
@@ -294,4 +302,7 @@ def app() -> FastAPI:
     builder off."""
     import os
 
-    return create_app(read_only=os.environ.get("SYNTHETICS_READ_ONLY", "").lower() in ("1", "true", "yes"))
+    def flag(name: str) -> bool:
+        return os.environ.get(name, "").lower() in ("1", "true", "yes")
+
+    return create_app(read_only=flag("SYNTHETICS_READ_ONLY"), admin=flag("SYNTHETICS_ADMIN"))

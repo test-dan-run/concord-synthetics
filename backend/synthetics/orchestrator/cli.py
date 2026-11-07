@@ -465,7 +465,9 @@ def viewer(host: Annotated[str, typer.Option()] = "127.0.0.1",
            port: Annotated[int, typer.Option(envvar="SYNTHETICS_PORT")] = 8610,
            reload: Annotated[bool, typer.Option(help="reload on backend changes")] = False,
            read_only: Annotated[bool, typer.Option("--read-only", envvar="SYNTHETICS_READ_ONLY",
-                                                   help="leave out the run builder (create, start, stop)")] = False):
+                                                   help="leave out the run builder (create, start, stop)")] = False,
+           admin: Annotated[bool, typer.Option("--admin", envvar="SYNTHETICS_ADMIN",
+                                               help="add the speaker pool admin page and routes")] = False):
     """The Room Config Viewer: the API over SYNTHETICS_RUNS, the run builder, and the built frontend (frontend/dist)."""
     import os
 
@@ -473,6 +475,8 @@ def viewer(host: Annotated[str, typer.Option()] = "127.0.0.1",
 
     if read_only:
         os.environ["SYNTHETICS_READ_ONLY"] = "1"  # read by the app factory, also in reload workers
+    if admin:
+        os.environ["SYNTHETICS_ADMIN"] = "1"
 
     uvicorn.run("synthetics.viewer.api:app", factory=True, host=host, port=port, reload=reload,
                 reload_dirs=["backend"] if reload else None)

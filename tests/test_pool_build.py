@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import csv
-import json
 from collections import Counter
-from pathlib import Path
 
 import pytest
 
@@ -13,42 +10,11 @@ from conftest import ROOT, make_cfg
 from synthetics.nsc.pool import check_pool, load_pool, pool_meta, speaker_splits
 from synthetics.nsc.pool_build import MIN_CLIPS, draft_pool, publish
 from synthetics.nsc.references import ReferenceIndex, references_for
+from voice_helpers import new_speaker, voice_folder
 
 V1 = ROOT / "data/nsc_part3_reference_speakers.csv"
 V2 = ROOT / "data/pools/p3-406-v2.csv"
 MIX = {"train": 0.7, "dev": 0.15, "test": 0.15}
-SHEET = ["speaker", "conference_id", "gender", "age", "ethnicity", "education", "occupation", "languages",
-         "first_language", "partner_id", "relationship", "synthetics_split", "candidates", "clips", "seconds",
-         "mos_best", "mos_min"]
-
-
-def voice_folder(root: Path, speakers: list[dict], *, clips: int = 5, mos: float = 3.2) -> Path:
-    """A voice folder in the nsc-part3-voices layout with `clips` clips per speaker."""
-    root.mkdir(parents=True, exist_ok=True)
-    with open(root / "speakers.csv", "w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=SHEET)
-        w.writeheader()
-        for s in speakers:
-            w.writerow({k: s.get(k, "") for k in SHEET})
-    lines = []
-    for s in speakers:
-        n = s.get("_clips", clips)
-        for k in range(n):
-            cid = f"{s['speaker']}_{k + 1:04d}"
-            lines.append({"clip_id": cid, "speaker": s["speaker"], "rank": k + 1,
-                          "audio": f"clean/{s['speaker']}/{cid}.wav", "duration": 6.0, "text": "okay lah",
-                          "mos": round(mos - 0.1 * k, 3), "source_zip": f"SDM/SPEAKER{s['speaker']}.zip",
-                          "gender": s["gender"], "age": s["age"], "ethnicity": s["ethnicity"],
-                          "first_language": s["first_language"]})
-    (root / "manifest.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
-    return root
-
-
-def new_speaker(sid: str, **kw) -> dict:
-    return {"speaker": sid, "gender": "F", "age": "2X", "ethnicity": "CHINESE", "first_language": "ENGLISH",
-            "languages": "ENGLISH", "conference_id": "9000", **kw}
-
-
 @pytest.fixture
 def folder(tmp_path):
     v1 = load_pool(V1)
