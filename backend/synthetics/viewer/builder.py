@@ -86,6 +86,11 @@ def build_config(draft: Draft) -> tuple[RunConfig, dict[str, Any]]:
         raise _error(422, "The overrides do not fit the config.", [{"loc": "overrides", "msg": str(exc)}]) from exc
 
 
+def _ethnicity_error(short: list[str]) -> HTTPException:
+    return _error(422, "The race mix cannot fill the largest meetings from the speaker pool.",
+                  [{"loc": "speaker_pool.ethnicity_mix", "msg": msg} for msg in short])
+
+
 def is_live(cfg: RunConfig) -> bool:
     return cfg.backends.mode in ("aicore", "record")
 
@@ -115,7 +120,7 @@ def preview(draft: Draft) -> dict:
     from ..nsc.pool import speaker_splits
     from ..orchestrator.run import resolve
     from ..stages.runner import meeting_id_for
-    from ..stages.s1_sample import run_meeting
+    from ..stages.s1_sample import ethnicity_shortfalls, run_meeting
     from ..validators.sampler_report import as_dicts, sampler_checks
 
     cfg, overrides = build_config(draft)
@@ -124,6 +129,9 @@ def preview(draft: Draft) -> dict:
         sp = speaker_splits(rc.speaker_pool.path, rc.speaker_pool.version)
     except (OSError, ValueError) as exc:
         raise _error(422, f"The speaker pool cannot be read: {exc}") from exc
+    short = ethnicity_shortfalls(rc, sp)
+    if short:
+        raise _ethnicity_error(short)
     n = min(cfg.n_meetings, PREVIEW_MAX)
     meetings, failures = [], []
     for i in range(1, n + 1):
@@ -136,7 +144,7 @@ def preview(draft: Draft) -> dict:
     plans = [{"meeting_id": m.meeting_id, **plan_of(m)} for m in meetings[:PREVIEW_PLANS]]
     return {"config_hash": config_hash(cfg), "revision": cfg.revision, "n_meetings": cfg.n_meetings,
             "n_sampled": n, "overrides": sorted(overrides), "meetings": [_row(m) for m in meetings], "plans": plans,
-            "checks": as_dicts(sampler_checks(rc, meetings)) if meetings else [], "failures": failures,
+            "checks": as_dicts(sampler_checks(rc, meetings, sp)) if meetings else [], "failures": failures,
             "live": is_live(cfg), "gpu_services": gpu_services(cfg) if is_live(cfg) else {},
             "stages_enabled": {str(int(s)): cfg.enabled(s) for s in cfg.stages},
             "audio_hours": round(minutes / 60, 2),
@@ -161,7 +169,7 @@ def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
 
     @app.post("/api/runs", status_code=201)
     def create_run(draft: Draft) -> dict:
-        from ..orchestrator.run import init_run
+        from ..orchestrator.run import PoolShortfall, init_run
 
         if not RUN_ID.match(draft.run_id):
             raise _error(422, "Run ids use letters, digits, dot, dash and underscore, and start with a letter or digit.",
@@ -175,6 +183,8 @@ def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
                                root=runs.root)
         except FileExistsError as exc:
             raise _error(409, str(exc), [{"loc": "run_id", "msg": "already exists"}]) from exc
+        except PoolShortfall as exc:
+            raise _ethnicity_error(exc.problems) from exc
         return {"id": run_dir.name, "config_hash": config_hash(cfg), "live": is_live(cfg)}
 
     def run_config(run_dir: Path) -> RunConfig:

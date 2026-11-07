@@ -102,6 +102,23 @@ def test_preview_reports_every_invalid_field(client):
     assert r.status_code == 422
 
 
+def test_a_race_mix_the_pool_cannot_fill_is_refused(client, tmp_path):
+    only = {"speaker_pool.ethnicity_mix": {"dist": "categorical", "weights": {"MALAY": 1.0}}}
+    for route, body in (("/api/preview", {}), ("/api/runs", {"run_id": "malay"})):
+        r = client.post(route, json={**body, "n_meetings": 2, "overrides": {**FAKE, **only}})
+        assert r.status_code == 422, route
+        errors = r.json()["detail"]["errors"]
+        assert {e["loc"] for e in errors} == {"speaker_pool.ethnicity_mix"}
+        assert errors[0]["msg"] == "train has 13 Malay speakers, but a meeting can have up to 20"
+    assert not (tmp_path / "malay").exists()
+    # the test split alone has 25 Malay voices, enough for the largest meeting
+    test_only = {"speaker_pool.split_mix": {"dist": "categorical", "weights": {"train": 0, "dev": 0, "test": 1}}}
+    r = client.post("/api/preview", json={"n_meetings": 3, "overrides": {**FAKE, **only, **test_only}})
+    assert r.status_code == 200
+    names = {c["name"] for c in r.json()["checks"]}
+    assert "ethnicity: Malay share of speakers" in names
+
+
 def test_create_refuses_bad_and_existing_ids(client):
     assert client.post("/api/runs", json={"run_id": "../x", "overrides": FAKE}).status_code == 422
     assert client.post("/api/runs", json={"run_id": "", "overrides": FAKE}).status_code == 422

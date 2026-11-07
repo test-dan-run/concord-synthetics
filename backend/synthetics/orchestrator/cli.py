@@ -219,7 +219,7 @@ def sampler_report(n: Annotated[int, typer.Option()] = 1000, seed: Annotated[int
     cfg = resolve(load_run_config(*config, overrides={"run_id": "sampler-report", "seed": seed, "n_meetings": n}))
     sp = speaker_splits(cfg.speaker_pool.path, cfg.speaker_pool.version)
     ms = [run_meeting(cfg, sp, meeting_id_for(i)) for i in range(1, n + 1)]
-    checks = sampler_checks(cfg, ms)
+    checks = sampler_checks(cfg, ms, sp)
     typer.echo(render(checks))
     if out:
         out.write_text(json.dumps(as_dicts(checks), indent=2))

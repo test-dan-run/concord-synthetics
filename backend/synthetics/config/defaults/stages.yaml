@@ -43,5 +43,6 @@ speaker_pool:
   path: data/nsc_part3_reference_speakers.csv
   version: p3-175-v1
   split_mix: {dist: categorical, weights: {train: 0.7, dev: 0.15, test: 0.15}}
+  ethnicity_mix: null      # target share of speakers per ethnicity (CHINESE, MALAY, INDIAN, OTHERS); null follows the pool
 lexicon:
   path: backend/synthetics/config/defaults/singlish_lexicon.yaml

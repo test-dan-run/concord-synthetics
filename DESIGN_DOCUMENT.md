@@ -116,7 +116,11 @@ Sampling order:
    topic.
 8. Assign each person an NSC reference speaker from the meeting's split, then sample the persona's gender,
    ethnicity, first language and code-switching languages to match that speaker, so the persona and the voice
-   agree.
+   agree. By default every speaker of the split is equally likely, so the mix of ethnicities follows the pool.
+   `speaker_pool.ethnicity_mix` (the run builder's "Race mix") sets target shares instead: each person draws an
+   ethnicity from the shares, among the groups the split still has speakers for, and then a speaker of that
+   group. A group at 0 never appears. Run creation and the preview refuse a mix that cannot fill the largest
+   meeting the config can draw, and the sampler checks compare each group's share of speakers with its target.
 
 The result is written to `meeting.json`, which every later stage reads.
 
@@ -332,7 +336,9 @@ Design principles:
 - **Fixed split assignment.** A pool of 175 NSC Part 3 speakers has fixed splits (50 train, 25 dev, 100 test) in
   `data/nsc_part3_reference_speakers.csv`. Each run copies them into `speaker_splits.json`, and a meeting only
   clones voices from its own split, so splits are speaker-disjoint within and across runs. Partners who recorded
-  together are always in the same split.
+  together are always in the same split. By ethnicity, train has 25 Chinese, 13 Malay and 12 Indian speakers,
+  dev has 13, 6 and 6, and test has 48, 25 and 22 plus 5 Others, which bounds how far an ethnicity mix can skew
+  a meeting.
 - **Typed config and artifacts.** Pydantic models validate the run config and every file in the run directory.
   Every distribution is a small typed object (uniform, log-normal, Bernoulli, categorical, Zipf) set in YAML.
 

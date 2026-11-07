@@ -223,6 +223,48 @@ def test_settings_added_later_stay_out_of_older_runs_cache_keys(cfg):
     new_slice = SampleStage().config_slice(cfg).model_dump(mode="json")
     assert new_slice["room_classes"]["table_at_centre"] is True
     assert new_slice["acoustics"]["mic"]["chair_mic_distance"] == {"dist": "uniform", "lo": 0.4, "hi": 0.6}
+    # without an ethnicity mix (the default) the slice is as before; with one it enters the key
+    assert "ethnicity_mix" not in old_slice and "ethnicity_mix" not in new_slice
+    mixed = make_cfg(**{"speaker_pool.ethnicity_mix": MIX})
+    assert SampleStage().config_slice(mixed).model_dump(mode="json")["ethnicity_mix"]["weights"]["MALAY"] == 0.6
+
+
+MIX = {"dist": "categorical", "weights": {"CHINESE": 0.2, "MALAY": 0.6, "INDIAN": 0.2, "OTHERS": 0.0}}
+
+
+def test_ethnicity_mix_sets_the_share_of_speakers(splits):
+    # meetings small enough that no split runs short of Malay voices
+    small = {"dist": "categorical", "weights": {"small": 1.0, "large": 0.0}}
+    mixed = make_cfg(**{"speaker_pool.ethnicity_mix": MIX, "room_classes.ratio": small})
+    ms = [sample_meeting(mixed, splits, meeting_id_for(i), i, np.random.default_rng(i)) for i in range(1500)]
+    checks = {c.name: c for c in sampler_checks(mixed, ms, splits)}
+    for e in ("Chinese", "Malay", "Indian", "Others"):
+        c = checks[f"ethnicity: {e} share of speakers"]
+        assert c.ok, c
+    assert checks["ethnicity: Malay share of speakers"].target == 0.6
+    assert not any(p.nsc_speaker.ethnicity == "OTHERS" for m in ms for p in m.people)
+    # every voice still comes from the meeting's own split, without repeats
+    for m in ms:
+        sids = [p.nsc_speaker.speaker for p in m.people]
+        assert len(set(sids)) == len(sids) and all(splits.speakers[s].split == m.split for s in sids)
+
+
+def test_ethnicity_mix_without_enough_voices_is_named(splits):
+    from synthetics.stages.s1_sample import draw_speakers, ethnicity_shortfalls
+
+    only = {"dist": "categorical", "weights": {"MALAY": 1.0}}
+    mixed = make_cfg(**{"speaker_pool.ethnicity_mix": only})
+    assert ethnicity_shortfalls(mixed, splits) == ["train has 13 Malay speakers, but a meeting can have up to 20",
+                                                   "dev has 6 Malay speakers, but a meeting can have up to 20"]
+    assert ethnicity_shortfalls(make_cfg(), splits) == []
+    with pytest.raises(RuntimeError, match="13 speakers of the ethnicity mix"):
+        draw_speakers(mixed, splits, "train", 14, np.random.default_rng(0))
+    assert len(draw_speakers(mixed, splits, "test", 20, np.random.default_rng(0))) == 20
+
+
+def test_ethnicity_mix_rejects_unknown_groups():
+    with pytest.raises(ValueError, match="unknown ethnicity EURASIAN"):
+        make_cfg(**{"speaker_pool.ethnicity_mix": {"dist": "categorical", "weights": {"EURASIAN": 1.0}}})
 
 
 def test_same_seed_gives_byte_identical_meeting_json(cfg, splits, tmp_path):

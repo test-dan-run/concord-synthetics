@@ -323,10 +323,26 @@ class PhasesConfig(_M):
     lease_timeout_s: int = 1800
 
 
+ETHNICITIES = ("CHINESE", "MALAY", "INDIAN", "OTHERS")  # as the NSC speaker sheet writes them
+
+
 class SpeakerPoolConfig(_M):
     path: Path = Path("data/nsc_part3_reference_speakers.csv")
     version: str = "p3-175-v1"
     split_mix: Categorical  # share of meetings per split
+    # Target share of speakers per ethnicity. Each seat draws an ethnicity from these weights, among the groups the
+    # meeting's split still has speakers for, then a speaker of that group; a group left out or at 0 never appears.
+    # None draws every seat evenly from the split's speakers, so the mix follows the pool.
+    ethnicity_mix: Categorical | None = None
+
+    @model_validator(mode="after")
+    def _known_ethnicities(self) -> SpeakerPoolConfig:
+        if self.ethnicity_mix is not None:
+            unknown = sorted(str(k) for k in self.ethnicity_mix.weights if k not in ETHNICITIES)
+            if unknown:
+                raise ValueError(f"ethnicity_mix: unknown ethnicity {', '.join(unknown)} "
+                                 f"(use {', '.join(ETHNICITIES)})")
+        return self
 
 
 class LexiconRef(_M):
