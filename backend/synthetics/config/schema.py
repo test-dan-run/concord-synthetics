@@ -420,6 +420,10 @@ class SurfaceMaterials(_M):
 class SimulationConfig(_M):
     """Stage 7. Room and device values are sampled in stage 1 (`acoustics`); these are render settings."""
 
+    # Also write each speaker as heard at the mic (stems/<speaker_id>.wav) and the noise alone (noise.wav), mono,
+    # with the mixture's band limit and gains but no clipping or codec, so stems plus noise add up to the mixture
+    # before those two. Off reproduces runs without stems; stage 7 leaves it out of its cache key while off.
+    write_stems: bool = False
     ism_max_order: int = 3  # with ray tracing for the late tail
     ray_tracing: list[RoomClass] = Field(default_factory=lambda: ["large"])
     ism_order_cap: int = 30  # rooms without ray tracing: ISM order reaches the T20 fit range, up to this cap

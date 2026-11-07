@@ -47,3 +47,5 @@ speaker_pool:
   refs_index: /home/user/code/datasets/nsc-part3-voices/manifest.jsonl   # the clips this pool clones from
 lexicon:
   path: backend/synthetics/config/defaults/singlish_lexicon.yaml
+simulation:
+  write_stems: true   # each speaker as heard at the mic, and the noise alone, beside the mixture

@@ -24,10 +24,11 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import soundfile as sf
-from pydantic import BaseModel
+from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer
 from scipy import signal
 
 from ..acoustics import device, noise
@@ -57,9 +58,10 @@ def active_power(x: np.ndarray, sr: int, floor_db: float = 30.0) -> float:
 CONV_CHUNK = 1 << 20  # samples (about a minute at 16 kHz): long signals are convolved piece by piece
 
 
-def add_convolved(buf: np.ndarray, x: np.ndarray, rir: np.ndarray, start: int) -> None:
+def add_convolved(buf: np.ndarray, x: np.ndarray, rir: np.ndarray, start: int, also: np.ndarray | None = None) -> None:
     """buf[:, start:] += x * rir (per channel), clipped to the buffer. Overlap-add in chunks, one channel at a time,
-    so a 45 min noise bed never needs a full-length temporary per channel."""
+    so a 45 min noise bed never needs a full-length temporary per channel. `also` (a speaker's stem buffer) gets the
+    same values, so `buf` sums exactly as it would without stems."""
     total = buf.shape[1]
     for i in range(0, len(x), CONV_CHUNK):
         s0 = start + i
@@ -70,6 +72,8 @@ def add_convolved(buf: np.ndarray, x: np.ndarray, rir: np.ndarray, start: int) -
             y = signal.oaconvolve(piece, rir[ch])
             n = min(len(y), total - s0)
             buf[ch, s0:s0 + n] += y[:n]
+            if also is not None:
+                also[ch, s0:s0 + n] += y[:n]
 
 
 def event_positions(m: MeetingSpec, kind: str, rng: np.random.Generator) -> tuple[float, float, float]:
@@ -172,6 +176,10 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
     by_spk: dict[str, list] = {}
     for s in tl.segments:
         by_spk.setdefault(s.speaker_id, []).append(s)
+    # stems: every convolved segment is also added to a buffer of the speaker's own, kept (mono, before the
+    # device chain) in a scratch folder until the chain's gains are known. The mix gets exactly the same additions
+    # in the same order and no extra random draws are made, so the mixture is identical with or without stems.
+    scratch = Path(tempfile.mkdtemp(dir=paths.dir, prefix=STEMS_SCRATCH)) if sim.write_stems else None
     for spk in sorted(by_spk):
         segs = by_spk[spk]
         track_path = paths.track(spk)
@@ -181,6 +189,7 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
             whole, remote_info[spk] = device.far_end(whole, sr, rng, narrowband_p=sim.far_end_narrowband_p,
                                                      kbps=(sim.far_end_kbps.lo, sim.far_end_kbps.hi))
         target = remote if spk in remote_ids else local
+        own = np.zeros((n_mics, n_total), np.float32) if scratch is not None else None
         for s in segs:
             s0, n = int(round(s.start * sr)), int(round((s.end - s.start) * sr))
             if whole is not None:
@@ -194,8 +203,11 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
             if s.kind == "backchannel":
                 lvl += sim.backchannel_offset_db
             gain = 10 ** ((lvl - db(p)) / 20)
-            add_convolved(target, x * gain, rirs[poses[s.turn_id].key()], s0)
+            add_convolved(target, x * gain, rirs[poses[s.turn_id].key()], s0, also=own)
         del whole
+        if own is not None:
+            np.save(scratch / f"{spk}.npy", own.mean(axis=0, dtype=np.float32))
+            del own
 
     dev: dict = {}
     if remote is not None:
@@ -261,6 +273,8 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
         x *= math.sqrt(p_speech / p * 10 ** (nz.level_db / 10))
         add_convolved(noise_buf, x, h, s0)
         del x
+    if scratch is not None:
+        np.save(scratch / f"{NOISE_STEM}.npy", noise_buf.mean(axis=0, dtype=np.float32))
     speech += noise_buf
     del noise_buf
     mix = speech
@@ -272,20 +286,25 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
         dev["band_limit_hz"] = chain.band_limit_hz
     fixed = 10 ** ((sim.output_level_db - db(p_speech)) / 20) if p_speech > 0 else 1.0
     mix *= fixed
+    g = None
     if chain.agc:
         g = device.agc_gain(mix.mean(axis=0, dtype=np.float32), sr, target_db=sim.agc_target_db, max_gain_db=sim.agc_max_gain_db, attack_s=sim.agc_attack_s, release_s=sim.agc_release_s,
                             gate_db=sim.agc_gate_db)
         dev["agc_gain_db_min"] = round(db(float(g.min()) ** 2), 2)
         dev["agc_gain_db_max"] = round(db(float(g.max()) ** 2), 2)
         mix *= g
-        del g
+        if scratch is None:
+            g = None
     peak = float(np.abs(mix).max()) if mix.size else 0.0
+    final = 1.0  # the last scalar gain, which stems share
     if chain.clipping_level and peak > 0:
         threshold = chain.clipping_level * peak
         dev["clipped_share"] = round(device.hard_clip(mix, threshold), 6)
-        mix *= 0.99 / threshold  # the clipped peaks land just under full scale
+        final = 0.99 / threshold
+        mix *= final  # the clipped peaks land just under full scale
     elif peak > 0.99:
-        mix *= 0.99 / peak  # headroom only: the recording is never clipped unless the chain says so
+        final = 0.99 / peak
+        mix *= final  # headroom only: the recording is never clipped unless the chain says so
         dev["headroom_gain_db"] = round(db((0.99 / peak) ** 2), 2)
     files = {"mixture": "mixture.wav"}
     if n_mics > 1:
@@ -300,14 +319,49 @@ def render(paths: MeetingPaths, m: MeetingSpec, tl: Timeline, cfg: RunConfig, rn
         if peak > 0.999:
             mono *= 0.999 / peak
     write_wav(paths.mixture, mono, sr)
+    del mono
+    if scratch is not None:
+        files.update(write_stems(paths, scratch, sr, chain.band_limit_hz, fixed * final, g))
 
-    err = (rt60 - m.room.rt60_target) / m.room.rt60_target if not math.isnan(rt60) else math.nan
+    err =(rt60 - m.room.rt60_target) / m.room.rt60_target if not math.isnan(rt60) else math.nan
     return AcousticRender(meeting_id=m.meeting_id, sample_rate=sr, channels=n_mics, duration=tl.stats.duration,
                           files=files, rt60_target=m.room.rt60_target, rt60_measured=round(rt60, 4),
                           rt60_error=round(err, 4), rt60_per_speaker=per_speaker, absorption_scale=round(model.scale, 4),
                           calibration=calibration, ism_order=model.ism_order, ray_tracing=model.ray_tracing,
                           n_impulse_responses=len(rirs), snr_target_db=snr_target, snr_db=round(snr, 2),
                           noise=noise_plan, remote=remote_info, device=dev)
+
+
+STEMS_SCRATCH = ".stems-"
+NOISE_STEM = "_noise"  # scratch name of the noise; never a speaker id
+
+
+def write_stems(paths: MeetingPaths, scratch: Path, sr: int, band_limit_hz: float | None, gain: float,
+                agc: np.ndarray | None) -> dict[str, str]:
+    """Each scratch stem through the mixture's linear chain (band limit, the scalar gains, the AGC gain curve),
+    written as 16-bit mono; clipping and the codec are left out, being nonlinear. Returns render.files entries."""
+    import shutil
+
+    files: dict[str, str] = {}
+    paths.stems_dir.mkdir(exist_ok=True)
+    try:
+        for f in sorted(scratch.glob("*.npy")):
+            x = np.load(f)[None, :]
+            if band_limit_hz:
+                device.band_limit(x, sr, band_limit_hz)
+            y = x[0] * np.float32(gain)
+            if agc is not None:
+                y *= agc
+            if f.stem == NOISE_STEM:
+                write_wav(paths.noise, y, sr)
+                files["noise"] = paths.noise.name
+            else:
+                write_wav(paths.stem(f.stem), y, sr)
+                files[f"stem:{f.stem}"] = f"stems/{f.stem}.wav"
+            del x, y
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    return files
 
 
 def _library_root(sim: SimulationConfig) -> Path | None:
@@ -324,6 +378,14 @@ class Stage7Config(BaseModel):
     simulation: SimulationConfig
     sample_rate: int
     noise_library_sha: str  # index.yaml of the noise library: adding clips re-renders
+
+    @model_serializer(mode="wrap")
+    def _without_unused_additions(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """Settings added after runs existed stay out of the cache key while they keep their old behaviour."""
+        data = handler(self)
+        if not data["simulation"].get("write_stems"):
+            data["simulation"].pop("write_stems", None)
+        return data
 
 
 def library_sha(sim: SimulationConfig) -> str:
@@ -360,6 +422,13 @@ class AcousticStage:
         seed = int(seq.generate_state(1, dtype=np.uint32)[0])
         if m.mic.channels == 1:
             ctx.paths.mixture_mc.unlink(missing_ok=True)  # left over from an earlier render of another layout
+        import shutil
+
+        for old in ctx.paths.dir.glob(STEMS_SCRATCH + "*"):  # scratch of a render that was interrupted
+            shutil.rmtree(old, ignore_errors=True)
+        if not cfg.simulation.write_stems:  # stems of an earlier render with them on
+            shutil.rmtree(ctx.paths.stems_dir, ignore_errors=True)
+            ctx.paths.noise.unlink(missing_ok=True)
         t0 = time.monotonic()
         rep = render(ctx.paths, m, tl, cfg, rng, seed)
         write_model(ctx.paths.render, rep)

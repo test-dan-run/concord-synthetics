@@ -170,9 +170,10 @@ def preview(draft: Draft) -> dict:
 
 def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
     """The write routes, on the viewer app. `start` launches the background run (tests replace it)."""
-    from . import suggest_routes
+    from . import export_routes, suggest_routes
 
     suggest_routes.add_routes(app)
+    export_routes.add_routes(app, runs)
 
     @app.get("/api/defaults")
     def defaults() -> dict:
