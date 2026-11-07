@@ -321,6 +321,26 @@ def viewer_contract(run: RunOpt, as_json: Annotated[bool, typer.Option("--json",
     raise typer.Exit(0 if all(r.ok for r in rows) else 1)
 
 
+@app.command("suggest-eval")
+def suggest_eval(fake: Annotated[bool, typer.Option("--fake", help="score the word-matching fake")] = False,
+                 data: Annotated[Path, typer.Option()] = Path("tests/data/suggest_eval.jsonl"),
+                 misses: Annotated[bool, typer.Option("--misses", help="list every wrong answer")] = False):
+    """Score the decision model (the `decision` role's CPU service) on labelled requests."""
+    from ..suggest.evaluate import evaluate, load_eval
+    from ..suggest.models import FakeDecisionModel
+    from ..viewer.suggest_routes import decision_model
+    from .run import app_path
+
+    model, name = (FakeDecisionModel(), "fake") if fake else decision_model()
+    if name == "fake" and not fake:
+        typer.echo("the decision service is not on the platform; pass --fake to score the fake")
+        raise typer.Exit(1)
+    res = evaluate(model, load_eval(app_path(data)))
+    if not misses:
+        res.pop("misses")
+    typer.echo(json.dumps({"model": name, **res}, indent=2))
+
+
 @app.command("calibrate-sv")
 def calibrate_sv(out: Annotated[Path, typer.Option(help="YAML overlay to write")] = Path("config/sv_thresholds.yaml"),
                  mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",

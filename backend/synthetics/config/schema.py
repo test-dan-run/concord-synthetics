@@ -54,6 +54,7 @@ class Role(StrEnum):
     ALIGNER = "aligner"
     ENHANCER = "enhancer"
     DEREVERB = "dereverb"
+    DECISION = "decision"  # turns a natural-language request into builder settings (CPU, never leased)
 
 
 RoomClass = Literal["small", "large"]

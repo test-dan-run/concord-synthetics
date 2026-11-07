@@ -1,4 +1,5 @@
-"""Fake voice data for tests: a fake  (clean clips for every pool speaker) and a voice folder."""
+"""Fake voice data for tests: a fake `nsc-part3-refs/` (clean clips for every first-pool speaker) and a voice folder
+in the `nsc-part3-voices` layout."""
 
 from __future__ import annotations
 
