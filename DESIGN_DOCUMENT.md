@@ -236,6 +236,10 @@ Each stage reads earlier stages' files, writes its own, and records a pass, fail
   first (at most one per speaker), then another speaker of the same split whose gender and ethnicity match (at
   most two per meeting). An utterance that still fails is kept in the audio and listed in `kept_failed`
   (`voice.on_exhausted: keep_flagged`), so one bad utterance does not fail a whole meeting.
+- On a retry only the re-synthesised utterances reach the models. Stage 5 keeps every utterance's embeddings,
+  transcripts and MOS in `voice_measures.npz`, keyed by the audio's sha256 and the service (and language for the
+  ASR), and reuses them for audio it has already measured. Every check and decision still runs on every utterance,
+  so the consistency and separability checks see the whole meeting.
 
 ### Stage 6: Conversation assembly
 
@@ -367,6 +371,7 @@ runs/<run_id>/
     utterances/*.wav           # stage 4 (dry)
     synthesis.json             # stage 4 (voice per speaker, per-utterance record)
     voice_validation.json      # stage 5
+    voice_measures.npz         # stage 5 (measurements reused on its retries; a cache, safe to delete)
     timeline.json              # stage 6
     tracks/<speaker_id>.wav    # stage 6 (dry, time-aligned)
     mixture.wav                # stage 7 (mixture_mc.wav too for array mics)

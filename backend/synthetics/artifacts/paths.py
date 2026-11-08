@@ -102,6 +102,11 @@ class MeetingPaths:
         return self.dir / "voice_validation.json"
 
     @property
+    def voice_measures(self) -> Path:
+        """Stage 5's measurements per utterance audio, reused on its retries (a cache, not an output)."""
+        return self.dir / "voice_measures.npz"
+
+    @property
     def timeline(self) -> Path:
         return self.dir / "timeline.json"
 

@@ -25,6 +25,10 @@ per reference); a speaker that fails consistency, or the speaker with fewer turn
 reference swap (another clip of the same NSC speaker first, then another same-split speaker with a matching sheet
 row). The retry carries {"resynth": [...], "swaps": [...]} as JSON feedback to stage 4. The meeting fails when an
 utterance is still failing after its last attempt (`voice.on_exhausted: fail`) or a needed swap is not possible.
+
+On a retry only the turns stage 4 made again are new audio, so only they reach the models: embeddings, transcripts
+and MOS of audio measured before come from `voice_measures.npz` (voice/measures.py). Every check and decision
+above still runs on every utterance with the current thresholds.
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ from itertools import combinations
 import numpy as np
 from pydantic import BaseModel
 
-from ..artifacts.io import read_model, write_model
+from ..artifacts.io import file_sha256, read_model, write_model
 from ..artifacts.meeting import MeetingSpec
 from ..artifacts.models import Script, SpeakerSplits
 from ..artifacts.voice import (
@@ -52,6 +56,7 @@ from ..config.schema import Phase, Role, RunConfig, StageId
 from ..nsc.references import ReferenceIndex, references_for
 from ..text.singlish import run_lexicon
 from ..validators.voice_checks import asr_words, consistency, cross_cosine, score_asr
+from ..voice.measures import Measures
 from .base import StageContext, StageResult
 
 SV_ROLES = (Role.SV_WAVLM, Role.SV_REDIMNET)
@@ -138,16 +143,24 @@ class VoiceValidationStage:
         utt_emb: dict[str, dict[str, list[np.ndarray]]] = {sid: {n: [] for n in embedders} for sid in syn.voices}
         long_emb: dict[str, dict[str, list[np.ndarray]]] = {sid: {n: [] for n in embedders} for sid in syn.voices}
 
+        # measurements of audio seen in an earlier round are reused (voice/measures.py); the keys say what made them
+        measures = Measures(paths.voice_measures)
+        service = {r.value: f"{cfg.backends.mode}:{cfg.backends.roles.get(r, '')}"
+                   for r in (*asr_roles(cfg), *SV_ROLES, Role.QUALITY)}
+        shas: set[str] = set()
+
         checks: list[UtteranceCheck] = []
         for u in syn.utterances:
             turn = turns[u.turn_id]
             audio = Audio.load(paths.utterance(u.turn_id))
+            sha = file_sha256(paths.utterance(u.turn_id))
+            shas.add(sha)
             reasons, skipped = [], []
             ref_words = asr_words(turn.text_norm, lex, ignore_fillers=vc.wer_ignore_fillers, normalised=True)
             sv: dict[str, float] = {}
             if audio.duration >= vc.sv_min_s and ref_words and turn.interaction != "backchannel":
                 for name, e in embedders.items():
-                    vec = e.embed([audio])[0]
+                    vec = measures.embedding(sha, f"{name}|{service[name]}", lambda e=e, a=audio: e.embed([a])[0])
                     utt_emb[u.speaker_id][name].append(vec)
                     if audio.duration >= vc.consistency_min_s:
                         long_emb[u.speaker_id][name].append(vec)
@@ -161,13 +174,14 @@ class VoiceValidationStage:
             limited, short = False, False
             if ref_words and u.source != "library":
                 ignore = laugh_ignore if "laugh" in turn.nonspeech else frozenset()
-                for role, client, service in asrs:
-                    hyp = client.transcribe(audio, language=vc.asr_language)
+                for role, client, service_name in asrs:
+                    hyp = measures.transcript(sha, f"{role.value}|{service[role.value]}|{vc.asr_language}",
+                                              lambda c=client, a=audio: c.transcribe(a, language=vc.asr_language))
                     s = score_asr(ref_words, hyp, lex, short_words=th.short_utterance_words,
                                   ignore_fillers=vc.wer_ignore_fillers, ignore=ignore)
                     short = s.short
                     ok = s.error <= (th.cer_max_short if s.short else th.wer_max)
-                    asr.append(AsrCheck(role=role.value, service=service, hypothesis=hyp, wer=s.wer, cer=s.cer,
+                    asr.append(AsrCheck(role=role.value, service=service_name, hypothesis=hyp, wer=s.wer, cer=s.cer,
                                         passed=ok))
                     if ok:
                         limited = role == Role.ASR_SINGLISH
@@ -182,7 +196,7 @@ class VoiceValidationStage:
 
             mos = None
             if audio.duration >= vc.mos_min_s:
-                mos = round(float(q.score([audio])[0]), 3)
+                mos = round(measures.mos(sha, service[Role.QUALITY.value], lambda a=audio: float(q.score([a])[0])), 3)
                 floor = max(th.mos_min, ref_mos[u.speaker_id] - th.mos_drop_max)
                 if mos < floor:
                     reasons.append(f"MOS {mos:.2f} < {floor:.2f}")
@@ -192,6 +206,7 @@ class VoiceValidationStage:
             checks.append(UtteranceCheck(turn_id=u.turn_id, speaker_id=u.speaker_id, sv=sv, asr=asr,
                                          asr_limited=limited, short=short, mos=mos, attempts=u.attempt, seed=u.seed,
                                          passed=not reasons, reasons=reasons, skipped=skipped))
+        measures.save(shas)
 
         speakers, embs_by = [], {}
         for sid in syn.voices:
@@ -255,7 +270,8 @@ class VoiceValidationStage:
         metrics: dict[str, float | int | str] = {
             "utterances": n, "failed": n_fail, "asr_limited": n_limited, "resynth": len(resynth),
             "swaps_new": len(new_swaps), "swaps_total": len(vv.swaps), "pairs_too_close": sum(p.too_close for p in pairs),
-            "resynthesised_ever": sum(c.attempts > 1 for c in checks)}
+            "resynthesised_ever": sum(c.attempts > 1 for c in checks),
+            "measured": measures.measured, "measures_reused": measures.reused}
         for name in embedders:
             vals = [c.sv[name] for c in checks if name in c.sv]
             if vals:

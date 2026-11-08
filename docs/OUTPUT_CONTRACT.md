@@ -26,6 +26,7 @@ runs/<run_id>/
     utterances/<turn_id>.wav   one dry utterance per script turn (stage 4)
     synthesis.json             the voice behind each speaker and how each utterance was made (stage 4)
     voice_validation.json      speaker verification, ASR and MOS checks per utterance, speaker and pair (stage 5)
+    voice_measures.npz         stage 5's own cache of those measurements; not an output, do not read it
     timeline.json              when each turn is heard (stage 6)
     tracks/<speaker_id>.wav    dry, time-aligned speech per speaker (stage 6)
     mixture.wav                the single-channel recording (stage 7)
