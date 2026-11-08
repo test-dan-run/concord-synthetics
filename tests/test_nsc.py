@@ -60,7 +60,7 @@ def test_init_run_writes_speaker_splits(tmp_path):
 
     rd = init_run("r", n_meetings=2, seed=1, overrides={"backends.mode": "fake"}, root=tmp_path)
     s = read_model(rd / "speaker_splits.json", SpeakerSplits)
-    assert s.pool_version == "p3-175-v1" and len(s.speakers) == 175
+    assert s.pool_version == "p3-406-v2" and len(s.speakers) == 406  # new runs use the grown pool
     assert sorted(p.name for p in (rd / "meetings").iterdir()) == ["m-000001", "m-000002"]
 
 

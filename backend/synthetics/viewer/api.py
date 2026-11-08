@@ -13,9 +13,13 @@ whitelist before any path is built, so no request reaches a file outside a run.
     GET /api/runs/{id}/summary                      run_report.json and voice_report.json
     GET /api/runs/{id}/speaker_splits               speaker_splits.json
     GET /api/runs/{id}/meetings                     one summary per meeting (manifest line, status, plan)
+    GET /api/runs/{id}/meetings/{mid}/audio/{name}  whitelisted WAVs (mixture, noise, utterances, tracks, stems)
     GET /api/runs/{id}/meetings/{mid}/{artifact}    whitelisted JSON files and prompts/<speaker_id>.txt
+    GET /api/runs/{id}/review                       review.json: the keep or leave-out marks, {} when none
     GET /api/runs/{id}/jobs                         progress from the status.json files
-    GET /api/runs/{id}/export?...                   the manifest slice (JSONL), the viewer's one action
+    GET /api/runs/{id}/export?...                   the manifest slice (JSONL)
+
+Audio is served with byte ranges so the browser can seek a long mixture without loading it whole.
 """
 
 from __future__ import annotations
@@ -41,8 +45,11 @@ from ..orchestrator.background import read_process
 RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 MEETING_ID = re.compile(r"^m-\d{6}$")
 PROMPT = re.compile(r"^prompts/S\d{2,3}\.txt$")
-# meeting files the viewer reads; audio is not served (playback is out of scope)
-ARTIFACTS = ("meeting.json", "script.json", "script_validation.json", "status.json", "synthesis.json",
+# audio a reviewer plays: the mixture, the noise on its own, one line, one speaker's clean or in-room track
+AUDIO = re.compile(r"^(mixture\.wav|noise\.wav|utterances/[A-Za-z0-9_-]{1,64}\.wav|(tracks|stems)/S\d{2,3}\.wav)$")
+REVIEW = "review.json"
+# meeting files the viewer reads
+ARTIFACTS =("meeting.json", "script.json", "script_validation.json", "status.json", "synthesis.json",
              "voice_validation.json", "timeline.json", "render.json", "labels/transcript.json",
              "labels/manifest_entry.json")
 RUN_FILES = {"summary": ("run_report.json", "voice_report.json"), "speaker_splits": ("speaker_splits.json",)}
@@ -154,23 +161,31 @@ def _matches(s: dict, *, room_class: str | None, split: str | None, min_speakers
 
 
 def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None, *, read_only: bool = False,
-               start=None) -> FastAPI:
-    """`read_only` leaves out the run builder; `start` replaces the background launcher (tests)."""
+               admin: bool = False, pools_dir: Path | None = None, start=None) -> FastAPI:
+    """`read_only` leaves out the run builder; `admin` adds the speaker pool admin routes (never with
+    `read_only`); `start` replaces the background launcher (tests)."""
     from ..orchestrator.run import APP_ROOT
     from ..orchestrator.run import runs_root as default_root
 
     runs = Runs(runs_root or default_root())
     app = FastAPI(title="Synthetics viewer", version="0.2.0")
     app.state.runs = runs
+    admin = admin and not read_only
 
     @app.get("/api/viewer")
     def viewer_info() -> dict:
-        return {"read_only": read_only, "runs_root": str(runs.root)}
+        return {"read_only": read_only, "admin": admin, "runs_root": str(runs.root)}
 
     if not read_only:
         from . import builder
 
         builder.add_routes(app, runs, **({"start": start} if start else {}))
+    if admin:
+        from ..config.loader import load_run_config
+        from . import admin as admin_routes
+
+        admin_routes.add_routes(app, runs.root, lambda: load_run_config(
+            overrides={"run_id": "admin", "seed": 1, "n_meetings": 1}), pools_dir)
 
     @app.get("/api/runs")
     def list_runs() -> list[dict]:
@@ -180,7 +195,8 @@ def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None,
             cfg = read_yaml(rp.config)
             out.append({"id": rid, "meetings": len(rp.meeting_ids()), "done": len(manifest_entries(rp)),
                         "seed": cfg.get("seed"), "n_meetings": cfg.get("n_meetings"), "config_hash": config_hash(cfg),
-                        "revision": cfg.get("revision", 1), "updated": rp.config.stat().st_mtime})
+                        "revision": cfg.get("revision", 1), "updated": rp.config.stat().st_mtime,
+                        "pilot": rid.endswith("-pilot")})
         return out
 
     @app.get("/api/runs/{run_id}/config")
@@ -217,6 +233,21 @@ def create_app(runs_root: Path | None = None, frontend_dist: Path | None = None,
     @app.get("/api/runs/{run_id}/meetings")
     def run_meetings(run_id: str) -> list[dict]:
         return summaries(run_id)
+
+    @app.get("/api/runs/{run_id}/meetings/{meeting_id}/audio/{name:path}")
+    def meeting_audio(run_id: str, meeting_id: str, name: str):
+        paths = runs.meeting(run_id, meeting_id)
+        if not AUDIO.match(name):
+            raise HTTPException(404, f"{name!r} is not served")
+        f = paths.dir / name
+        if not f.is_file():
+            raise HTTPException(404, f"{meeting_id} has no {name} yet")
+        return FileResponse(f, media_type="audio/wav")
+
+    @app.get("/api/runs/{run_id}/review")
+    def run_review(run_id: str) -> dict:
+        f = runs.run(run_id).run_dir / REVIEW
+        return _json(f) if f.is_file() else {}
 
     @app.get("/api/runs/{run_id}/meetings/{meeting_id}/{artifact:path}")
     def meeting_artifact(run_id: str, meeting_id: str, artifact: str):
@@ -294,4 +325,7 @@ def app() -> FastAPI:
     builder off."""
     import os
 
-    return create_app(read_only=os.environ.get("SYNTHETICS_READ_ONLY", "").lower() in ("1", "true", "yes"))
+    def flag(name: str) -> bool:
+        return os.environ.get(name, "").lower() in ("1", "true", "yes")
+
+    return create_app(read_only=flag("SYNTHETICS_READ_ONLY"), admin=flag("SYNTHETICS_ADMIN"))

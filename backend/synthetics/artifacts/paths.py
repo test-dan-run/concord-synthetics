@@ -121,6 +121,19 @@ class MeetingPaths:
         return self.dir / "mixture_mc.wav"
 
     @property
+    def stems_dir(self) -> Path:
+        return self.dir / "stems"
+
+    def stem(self, speaker_id: str) -> Path:
+        """One speaker as heard at the mic (stage 7, `simulation.write_stems`)."""
+        return self.stems_dir / f"{speaker_id}.wav"
+
+    @property
+    def noise(self) -> Path:
+        """The noise on its own as heard at the mic (stage 7, `simulation.write_stems`)."""
+        return self.dir / "noise.wav"
+
+    @property
     def render(self) -> Path:
         return self.dir / "render.json"
 

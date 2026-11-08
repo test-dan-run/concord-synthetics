@@ -131,7 +131,7 @@ def main(run_dir: Path) -> int:
     rp = RunPaths(Path(run_dir))
     try:
         cfg, _ = load_run(rp.run_dir)
-        rep = PhaseScheduler(rp.run_dir, cfg).run(until=StageId.LABELS)
+        rep = PhaseScheduler(rp.run_dir, cfg).run_waves(until=StageId.LABELS)
         write_run_report(rp.run_dir, rep.phase_seconds)
         print(json.dumps(summarise(rp.run_dir, StageId.LABELS), indent=2), flush=True)
     except KeyboardInterrupt:

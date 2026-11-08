@@ -54,6 +54,7 @@ class Role(StrEnum):
     ALIGNER = "aligner"
     ENHANCER = "enhancer"
     DEREVERB = "dereverb"
+    DECISION = "decision"  # turns a natural-language request into builder settings (CPU, never leased)
 
 
 RoomClass = Literal["small", "large"]
@@ -321,12 +322,35 @@ class PhasesConfig(_M):
     platform_dir: Path = Path("../../platform")
     no_evict: bool = False
     lease_timeout_s: int = 1800
+    # Meetings per wave: each wave goes through all eight stages before the next starts, so finished meetings can
+    # be reviewed early, at the cost of leasing every GPU phase once per wave. None: the whole run in one wave.
+    # Orchestration only: results do not depend on it, since every draw is seeded per meeting and stage.
+    wave_size: int | None = Field(None, ge=1)
+
+
+ETHNICITIES = ("CHINESE", "MALAY", "INDIAN", "OTHERS")  # as the NSC speaker sheet writes them
 
 
 class SpeakerPoolConfig(_M):
     path: Path = Path("data/nsc_part3_reference_speakers.csv")
     version: str = "p3-175-v1"
     split_mix: Categorical  # share of meetings per split
+    # Target share of speakers per ethnicity. Each seat draws an ethnicity from these weights, among the groups the
+    # meeting's split still has speakers for, then a speaker of that group; a group left out or at 0 never appears.
+    # None draws every seat evenly from the split's speakers, so the mix follows the pool.
+    ethnicity_mix: Categorical | None = None
+    # The clip manifest the run clones from (a voice folder's manifest.jsonl). None: the shared nsc-part3-refs
+    # index, as every run before grown pools used.
+    refs_index: Path | None = None
+
+    @model_validator(mode="after")
+    def _known_ethnicities(self) -> SpeakerPoolConfig:
+        if self.ethnicity_mix is not None:
+            unknown = sorted(str(k) for k in self.ethnicity_mix.weights if k not in ETHNICITIES)
+            if unknown:
+                raise ValueError(f"ethnicity_mix: unknown ethnicity {', '.join(unknown)} "
+                                 f"(use {', '.join(ETHNICITIES)})")
+        return self
 
 
 class LexiconRef(_M):
@@ -396,6 +420,10 @@ class SurfaceMaterials(_M):
 class SimulationConfig(_M):
     """Stage 7. Room and device values are sampled in stage 1 (`acoustics`); these are render settings."""
 
+    # Also write each speaker as heard at the mic (stems/<speaker_id>.wav) and the noise alone (noise.wav), mono,
+    # with the mixture's band limit and gains but no clipping or codec, so stems plus noise add up to the mixture
+    # before those two. Off reproduces runs without stems; stage 7 leaves it out of its cache key while off.
+    write_stems: bool = False
     ism_max_order: int = 3  # with ray tracing for the late tail
     ray_tracing: list[RoomClass] = Field(default_factory=lambda: ["large"])
     ism_order_cap: int = 30  # rooms without ray tracing: ISM order reaches the T20 fit range, up to this cap
@@ -450,6 +478,11 @@ class LabelsConfig(_M):
 # ---------------------------------------------------------------- the run
 
 
+class KeyTerm(_M):
+    term: str = Field(min_length=1, max_length=60)
+    say: str | None = Field(None, max_length=80)  # how it is said: "letters", or a respelling such as "sing pass"
+
+
 class RunConfig(_M):
     schema_version: Literal["1"] = "1"
     # How a run samples and caches. 1: older runs, which a frozen config without the field is.
@@ -480,6 +513,10 @@ class RunConfig(_M):
     thresholds: ThresholdsConfig = ThresholdsConfig()
     lexicon: LexiconRef = LexiconRef()
     speaker_pool: SpeakerPoolConfig
+    # Words the meetings should use (product names, acronyms, local terms). Stage 2 asks for them in the brief,
+    # and the run's lexicon makes their spelling canonical and their pronunciation a TTS hint. Empty: no change
+    # anywhere, so runs without key terms keep their cache keys.
+    key_terms: list[KeyTerm] = []
 
     def enabled(self, stage: StageId) -> bool:
         toggle = self.stages.get(stage)

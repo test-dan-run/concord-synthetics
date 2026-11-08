@@ -49,9 +49,8 @@ from ..artifacts.voice import (
 )
 from ..backends.base import Audio
 from ..config.schema import Phase, Role, RunConfig, StageId
-from ..nsc.references import ReferenceIndex
-from ..nsc.settings import nsc_paths
-from ..text.singlish import Lexicon
+from ..nsc.references import ReferenceIndex, references_for
+from ..text.singlish import run_lexicon
 from ..validators.voice_checks import asr_words, consistency, cross_cosine, score_asr
 from .base import StageContext, StageResult
 
@@ -112,8 +111,8 @@ class VoiceValidationStage:
                             max_clip_swaps=v.max_clip_swaps, nonlexical_tts=v.nonlexical_tts,
                             services={r.value: cfg.backends.roles.get(r, "")
                                       for r in (*asr_roles(cfg), *SV_ROLES, Role.QUALITY)},
-                            lexicon_version=Lexicon.load(cfg.lexicon.path).version,
-                            refs_index=ReferenceIndex.load(nsc_paths()).sha256)
+                            lexicon_version=run_lexicon(cfg).version,
+                            refs_index=references_for(cfg).sha256)
 
     def run(self, ctx: StageContext) -> StageResult:
         cfg, th, vc, paths = ctx.cfg, ctx.cfg.thresholds, ctx.cfg.voice, ctx.paths
@@ -121,8 +120,8 @@ class VoiceValidationStage:
         script = read_model(paths.script, Script)
         syn = read_model(paths.synthesis, Synthesis)
         splits = read_model(paths.artifact("speaker_splits"), SpeakerSplits)
-        lex = Lexicon.load(cfg.lexicon.path)
-        refs = ReferenceIndex.load(nsc_paths())
+        lex = run_lexicon(cfg)
+        refs = references_for(cfg)
         turns = {t.turn_id: t for t in script.turns}
         b = ctx.backends
         asrs = [(r, b.get(r), cfg.backends.roles.get(r, "")) for r in asr_roles(cfg)]

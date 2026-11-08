@@ -1,7 +1,9 @@
-"""A fake `nsc-part3-refs/` (clean clips for every pool speaker) for the phase C tests."""
+"""Fake voice data for tests: a fake `nsc-part3-refs/` (clean clips for every first-pool speaker) and a voice folder
+in the `nsc-part3-voices` layout."""
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -31,3 +33,35 @@ def fake_refs(root: Path, *, clips: int = 2, raw: bool = False) -> Path:
             lines.append(row)
     (root / "clean/index.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
     return root
+
+
+SHEET = ["speaker", "conference_id", "gender", "age", "ethnicity", "education", "occupation", "languages",
+         "first_language", "partner_id", "relationship", "synthetics_split", "candidates", "clips", "seconds",
+         "mos_best", "mos_min"]
+
+
+def voice_folder(root: Path, speakers: list[dict], *, clips: int = 5, mos: float = 3.2) -> Path:
+    """A voice folder in the nsc-part3-voices layout with `clips` clips per speaker."""
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / "speakers.csv", "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=SHEET)
+        w.writeheader()
+        for s in speakers:
+            w.writerow({k: s.get(k, "") for k in SHEET})
+    lines = []
+    for s in speakers:
+        n = s.get("_clips", clips)
+        for k in range(n):
+            cid = f"{s['speaker']}_{k + 1:04d}"
+            lines.append({"clip_id": cid, "speaker": s["speaker"], "rank": k + 1,
+                          "audio": f"clean/{s['speaker']}/{cid}.wav", "duration": 6.0, "text": "okay lah",
+                          "mos": round(mos - 0.1 * k, 3), "source_zip": f"SDM/SPEAKER{s['speaker']}.zip",
+                          "gender": s["gender"], "age": s["age"], "ethnicity": s["ethnicity"],
+                          "first_language": s["first_language"]})
+    (root / "manifest.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+    return root
+
+
+def new_speaker(sid: str, **kw) -> dict:
+    return {"speaker": sid, "gender": "F", "age": "2X", "ethnicity": "CHINESE", "first_language": "ENGLISH",
+            "languages": "ENGLISH", "conference_id": "9000", **kw}

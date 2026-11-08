@@ -16,3 +16,4 @@ backends:
     aligner: qwen3-forced-aligner
     enhancer: deepfilternet3
     dereverb: wpe-dereverb
+    decision: lfm2-5-350m-decision   # CPU service; the viewer falls back to word matching without it

@@ -4,7 +4,8 @@ Sampling order (design doc "Meeting config rules"):
 1. room class, speaker count; then the non-geometric draws (hybrid + remote count, presentation + presenter
    count + who returns to a seat, wall seating by choice), so resampling the room never biases their rates
 2. room, table and positions, redrawn until everyone fits (`fit_resamples` counts the redraws)
-3. NSC speaker per person from the meeting's split, persona attributes matched to that speaker's sheet row
+3. NSC speaker per person from the meeting's split (following the ethnicity mix when one is set), persona
+   attributes matched to that speaker's sheet row
 4. chair and turn shares (Zipf; the chair takes the top share), speaker ids by share rank (S01 = chair); in large
    rooms the chair may then move to the head of the table
 5. mic, speakerphone, acoustics, device chain, dynamics
@@ -44,6 +45,7 @@ from ..artifacts.meeting import (
 from ..artifacts.models import SpeakerSplits
 from ..config.distributions import Categorical
 from ..config.schema import (
+    ETHNICITIES,
     AcousticsConfig,
     DynamicsConfig,
     PersonasConfig,
@@ -289,6 +291,54 @@ def _speaker_attrs(splits: SpeakerSplits, sid: str) -> NscSpeaker:
                       first_language=s.first_language, languages=list(s.languages))
 
 
+def draw_speakers(cfg: RunConfig, splits: SpeakerSplits, split: str, n: int, rng: np.random.Generator) -> list[str]:
+    """`n` different NSC speakers of `split`. Without an ethnicity mix every speaker is equally likely. With one, each
+    seat draws an ethnicity from the mix, among the groups the split still has speakers for, and then a speaker of
+    that group, so the seats follow the mix until a group runs out in that split."""
+    candidates = splits.in_split(split)
+    mix = cfg.speaker_pool.ethnicity_mix
+    if mix is None:
+        if len(candidates) < n:
+            raise RuntimeError(f"split {split} has {len(candidates)} speakers, meeting needs {n}")
+        return [candidates[int(i)] for i in rng.choice(len(candidates), size=n, replace=False)]
+    left = {e: [s for s in candidates if splits.speakers[s].ethnicity == e]
+            for e in ETHNICITIES if mix.weights.get(e, 0) > 0}
+    if sum(len(v) for v in left.values()) < n:
+        raise RuntimeError(f"split {split} has {sum(len(v) for v in left.values())} speakers of the ethnicity mix's "
+                           f"groups ({', '.join(left)}), meeting needs {n}")
+    chosen = []
+    for _ in range(n):
+        groups = [e for e, ss in left.items() if ss]
+        w = np.array([mix.weights[e] for e in groups], float)
+        g = left[groups[int(rng.choice(len(groups), p=w / w.sum()))]]
+        chosen.append(g.pop(int(rng.integers(len(g)))))
+    return chosen
+
+
+def _max_speakers(d: Any) -> int:
+    return int(max(float(k) for k in d.weights)) if isinstance(d, Categorical) else int(d.hi)
+
+
+def ethnicity_shortfalls(cfg: RunConfig, splits: SpeakerSplits) -> list[str]:
+    """Why the ethnicity mix cannot fill every meeting the config can draw: per split with meetings, the largest
+    meeting against that split's speakers of the mix's groups. Empty when it can (or without a mix)."""
+    mix = cfg.speaker_pool.ethnicity_mix
+    if mix is None:
+        return []
+    rc = cfg.room_classes
+    need = max(_max_speakers(rc.classes[c].speakers) for c, p in rc.ratio.probs.items() if p > 0)
+    groups = [e for e in ETHNICITIES if mix.weights.get(e, 0) > 0]
+    out = []
+    for split, p in cfg.speaker_pool.split_mix.probs.items():
+        if p <= 0:
+            continue
+        have = sum(1 for s in splits.in_split(split) if splits.speakers[s].ethnicity in groups)
+        if have < need:
+            out.append(f"{split} has {have} {' or '.join(g.title() for g in groups)} speakers, but a meeting can "
+                       f"have up to {need}")
+    return out
+
+
 def _persona(cfg: RunConfig, nsc: NscSpeaker, seniority: str, tercile: int, used_names: set[str],
              rng: np.random.Generator) -> Persona:
     pc = cfg.personas
@@ -346,10 +396,7 @@ def sample_meeting(cfg: RunConfig, splits: SpeakerSplits, meeting_id: str, seed:
 
     # NSC voices from the meeting's split; persona seniority from the speaker's age band
     split = cfg.speaker_pool.split_mix.sample(rng)
-    candidates = splits.in_split(split)
-    if len(candidates) < plan.n:
-        raise RuntimeError(f"split {split} has {len(candidates)} speakers, meeting needs {plan.n}")
-    chosen = [candidates[int(i)] for i in rng.choice(len(candidates), size=plan.n, replace=False)]
+    chosen = draw_speakers(cfg, splits, split, plan.n, rng)
     for p, sid in zip(people, chosen, strict=True):
         p.nsc = sid
         age = splits.speakers[sid].age
@@ -565,6 +612,7 @@ ADDED_SETTINGS: tuple[tuple[tuple[str, ...], object, tuple[tuple[str, ...], ...]
     (("room_classes", "table_at_centre"), False, ()),
     (("seating", "chair_at_head"), {"dist": "bernoulli", "p": 0.0}, ()),
     (("acoustics", "mic", "chair_mic"), {"dist": "bernoulli", "p": 0.0}, (("acoustics", "mic", "chair_mic_distance"),)),
+    (("ethnicity_mix",), None, ()),
 )
 
 
@@ -576,6 +624,7 @@ class Stage1Config(BaseModel):
     dynamics: DynamicsConfig
     personas: PersonasConfig
     split_mix: Categorical
+    ethnicity_mix: Categorical | None = None
 
     @model_serializer(mode="wrap")
     def _without_unused_additions(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
@@ -606,7 +655,8 @@ class SampleStage:
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         return Stage1Config(room_classes=cfg.room_classes, seating=cfg.seating, acoustics=cfg.acoustics,
                             turn_taking=cfg.turn_taking, dynamics=cfg.dynamics, personas=cfg.personas,
-                            split_mix=cfg.speaker_pool.split_mix)
+                            split_mix=cfg.speaker_pool.split_mix,
+                            ethnicity_mix=cfg.speaker_pool.ethnicity_mix)
 
     def run(self, ctx: StageContext) -> StageResult:
         splits = read_model(ctx.paths.artifact("speaker_splits"), SpeakerSplits)

@@ -18,10 +18,13 @@ backend/synthetics/
   stages/        s1_sample.py to s8_labels.py, base.py (Stage protocol), runner.py (cache keys, status)
   orchestrator/  cli.py (the `synthetics` command), scheduler, GPU lease, phase_c / phase_post loops
   backends/      role protocols, aicore clients, fakes, record/replay transport
+  suggest/       questions.yaml (decision questions), engine, effects, decision models (natural language -> settings)
   acoustics/ export/ validators/ text/ nsc/ voice/
-  viewer/        api.py (read routes), builder.py (create/start/stop runs), contract.py
-frontend/src/    app/ (routes), features/{browser,detail,distributions,builder,pipeline}, lib/, components/
-data/            nsc_part3_reference_speakers.csv: the pinned speaker pool and its fixed splits
+  viewer/        api.py (read routes, audio), builder.py (create/start/stop runs, pilots, review marks, voice swap),
+                 suggest_routes.py, export_routes.py, admin.py (speaker pool, --admin only), contract.py
+frontend/src/    app/ (routes), features/{guided,admin,browser,detail,distributions,builder,pipeline}, lib/, components/
+data/            speaker pools and their fixed splits: nsc_part3_reference_speakers.csv (the first, 175 speakers),
+                 pools/<version>.csv with a <version>.json sidecar (grown pools; p3-406-v2 for new runs)
 config/          sv_thresholds.yaml: calibrated SV thresholds, an overlay for init-run
 tests/           pytest suite; helpers.py::fake_run builds a fake-backend run
 runs/            run directories (git-ignored)
@@ -45,6 +48,9 @@ just run <run>                                # all 8 stages; `uv run synthetics
 just status <run>                             # state counts per stage
 just viewer                                   # API + built UI on http://127.0.0.1:8610 (--read-only drops the builder)
 just viewer-dev                               # API with reload + Vite on :5174
+uv run synthetics viewer --admin              # also the speaker pool admin page
+uv run synthetics pool build --from <folder> --version <v>   # grow the pool from a curated voice folder
+just suggest-eval --fake                      # score a decision model on labelled requests
 ```
 
 `just test` skips tests marked `live` (need platform services, `just test-live`) and `slow`. `just --list`
@@ -58,17 +64,22 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
 - A stage is skipped when `status.json` holds a pass with the same cache key: stage id and version, the stage's
   config slice, input file hashes, pending feedback and (revision 2 and up) the run revision.
 - Randomness comes from `SeedSequence([run_seed, meeting_seed, stage, attempt])`. Never use an unseeded RNG.
-- Only one GPU phase's models fit at a time, so the scheduler runs each stage across all meetings, leasing that
-  phase's services with the platform's `tools/stack.py up/down` (`orchestrator/lease.py`). Execution is
-  sequential: one meeting, one request at a time.
+- Only one GPU phase's models fit at a time, so the scheduler runs each stage across all meetings of a wave
+  (`phases.wave_size` meetings, 10 for new runs; a run without it is one wave), leasing that phase's services
+  with the platform's `tools/stack.py up/down` (`orchestrator/lease.py`). Each wave finishes before the next
+  starts. Execution is sequential: one meeting, one request at a time.
+- The decision role turns a user's words into settings: it only scores the options in `suggest/questions.yaml`,
+  and code applies their effects. It is a CPU service, never leased; without it the viewer falls back to word
+  matching and says so.
 - Each model role maps to a service name in `config/defaults/backends.yaml`. Swapping a model is a change there.
   `backends.mode` is `aicore`, `fake`, `replay` or `record`; fake and replay never lease the GPU.
 - Every run file is a Pydantic model in `artifacts/`, written with `artifacts/io.py` (atomic write). Config
   models are frozen with `extra="forbid"`, so a misspelt YAML key fails loudly.
 - Stage 7 sets levels at the source and never normalises, so far talkers stay quiet.
-- The viewer's read routes never write to a run and serve only whitelisted files, never audio. Derived numbers
-  (distances, histograms) are computed in the browser. Speakers are never colour-coded; room classes use
-  `cat-1` and `cat-2`.
+- The viewer's read routes never write to a run and serve only whitelisted files, audio included (mixture, noise,
+  utterances, tracks, stems, with byte ranges). The only writes beside a run's results are `review.json` (keep or
+  leave out) and a reviewer's voice swap, which goes through stage 5's swap feedback. Derived numbers (distances,
+  histograms) are computed in the browser. Speakers are never colour-coded; room classes use `cat-1` and `cat-2`.
 
 ## Conventions
 
@@ -84,8 +95,9 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
 
 - Never edit a run's frozen `config.yaml`, and never change old runs' results. A change that would alter draws
   or cache keys must be gated on `RunConfig.revision` (1 for old runs, 2 from `stages.yaml`). A new setting gets
-  a schema default that reproduces the old behaviour, and the YAML default turns it on for new runs; stage 1
-  leaves a setting out of its cache slice while it equals that default (`s1_sample.py`).
+  a schema default that reproduces the old behaviour, and the YAML default turns it on for new runs; stages 1 and
+  7 leave a setting out of their cache slice while it equals that default (`s1_sample.py`, `s7_acoustic.py`), and
+  `key_terms` only reaches a slice through the lexicon version when a run has terms.
 - Bumping a stage's `version` re-runs that stage on every old run that is resumed. Do it only when outputs
   should change.
 - Leave `runs/m3-10` untouched. `runs/m9-e2e` and `runs/m5-exit` are the reference real runs.
@@ -93,7 +105,13 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
   live in `$AI_ASSETS`, datasets in `/home/user/code/datasets/`.
 - Ask before starting a GPU phase or a real-backend run: they take hours and the GPU is shared.
 - A meeting only clones voices from its own split (`speaker_splits.json`), so splits stay speaker-disjoint. NSC
-  clips with `#name#` redactions are never used (PDPA).
+  clips with `#name#` redactions are never used (PDPA). Pools are never rewritten: a grown pool is a new file that
+  keeps every earlier speaker's split, assigns each new speaker one split for good (partners together) and is
+  checked against its sidecar's counts. `speaker_pool.refs_index` points a run at a voice folder's clip manifest;
+  unset, runs use the shared `nsc-part3-refs` index.
+- The platform runs one GPU service at a time, except a GPU pack listed in its `config.yaml` `gpu_packs`. Phase C's
+  four GPU services are the pack `synthetics-phase-c`, which the platform starts together with shares of the GPU;
+  phase C's GPU roles must stay exactly that pack (`tests/test_orchestrator.py` checks), or the lease is refused.
 - `status.json` locking uses `fcntl`, so the pipeline runs on Linux only (WSL here), not native Windows.
 - If `just test` says "Failed to spawn: pytest", the `.venv` was built at an older path. Run
   `uv sync --reinstall` (or `uv run python -m pytest`).

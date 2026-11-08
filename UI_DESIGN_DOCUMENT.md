@@ -9,8 +9,9 @@ The Room Config Viewer is the web UI of Synthetics: it shows what the synthetic 
 Three product decisions shape everything below:
 
 - **Part of Synthetics, outside Concord.** The viewer ships in the Synthetics app under its own name and icon, built on the AeroAudio design system so it looks and behaves like the other workspace tools.
-- **Read-only room viewer.** The room viewer reads pipeline artifacts from `runs/<run_id>/` and never writes back. It has no resample, regenerate or edit actions; its one action is exporting a manifest slice.
-- **A separate run builder.** Creating and running a dataset lives in its own sidebar group, Generate, so the room viewer's screens stay read-only. The builder only creates new runs and starts or stops them; it never edits a frozen config or a stage's output. `synthetics viewer --read-only` leaves it out.
+- **Natural language first.** People who are not engineers make a dataset through a guided flow: they describe the meetings in their own words, read a plan, listen to three sample meetings, review meetings as they finish and export a pack. A chat beside the plan and the samples changes settings through the decision questions (`suggest/questions.yaml`), so a request never becomes a value nobody wrote down.
+- **Read-only room viewer.** The engineer screens (Meetings, Distributions, the meeting detail) read pipeline artifacts from `runs/<run_id>/` and never write back. The only writes beside a run's results are review marks (`review.json`) and a reviewer's voice swap, which goes through stage 5's own swap feedback; neither edits a frozen config or a stage's output.
+- **Builder and admin are switchable.** `synthetics viewer --read-only` leaves out everything that creates, starts or marks runs. `--admin` adds the speaker pool page.
 
 Goals:
 
@@ -18,7 +19,9 @@ Goals:
 - Make sampler drift visible: room-class mix, presentation and wall-seating rates, hybrid rate, acoustics, mic distances and turn-taking, each against `config.yaml`.
 - Show each persona's saved prompt beside the script turns it produced, so script quality problems trace back to the prompt.
 
-Out of scope: editing an existing run's config, re-running single stages or meetings, audio playback, label review, and anything the fine-tuning application owns (training, evaluation).
+- Let someone with no pipeline knowledge go from a description to an exported dataset, hearing samples before the GPU spends hours on the whole run.
+
+Out of scope: editing an existing run's config, re-running single stages, label editing, uploading new recordings of real people, and anything the fine-tuning application owns (training, evaluation).
 
 ## Users and key tasks
 
@@ -155,7 +158,7 @@ Charts sit under three group headings: Rooms and acoustics (stages 1 and 7), Pos
 One page at `/new`: a form on the left and a sticky preview on the right, stacked below `xl`.
 
 1. **Run.** Start from the defaults or from an existing run, run id (suggested as `d-<date>`, checked against the runs on disk), meetings, seed, and backends (real models on the GPU, or fake with no GPU). Starting from a run copies its frozen config: the form fields fill in, and every other setting that differs from the defaults becomes a line of the YAML overlay. The new run always takes the current revision.
-2. **Curated settings,** grouped as rooms and speakers, turn-taking, seating and participants, acoustics and device, splits, and stage switches (3, 5 and 7). Ranges are two numbers, probabilities a slider with a number in %, weights one number per category with its normalised share. A field that differs from the default says "changed". Every setting, the run fields and the YAML overlay included, has an info button beside its label. On hover, keyboard focus or a tap it explains what the setting is and why it matters for the training data (the text lives with the field in `lib/draft.ts`). Escape closes it, and it stays inside the screen at phone width.
+2. **Curated settings,** grouped as rooms and speakers, turn-taking, seating and participants, acoustics and device, splits and voices (the split mix and the race mix), and stage switches (3, 5 and 7). Ranges are two numbers, probabilities a slider with a number in %, weights one number per category with its normalised share. The race mix starts as "As in the pool"; switching that off shows the weights, starting from the pool's shares. A field that differs from the default says "changed". Every setting, the run fields and the YAML overlay included, has an info button beside its label. On hover, keyboard focus or a tap it explains what the setting is and why it matters for the training data (the text lives with the field in `lib/draft.ts`). Escape closes it, and it stays inside the screen at phone width.
 3. **YAML overlay** for any other setting, as in a `--config` file; dotted keys work too, and the overlay wins over the form.
 4. **Preview.** Stage 1 runs on the server in memory for the draft, a short pause after each change, so it shows the meetings the run will sample (up to the first 500): class and split counts, audio hours, hybrid, presentation and wall seat shares, mini plans of the first six meetings, histograms of speakers, length, RT60 and SNR, the sampler checks, and any meeting that cannot be sampled. Validation errors from the backend appear under their field.
 5. **Create.** Says whether the run will lease GPU services and, for real backends, a rough time scaled from `m9-e2e`. Creating writes the frozen config and goes to the Pipeline screen; it does not start the run.
@@ -163,6 +166,20 @@ One page at `/new`: a form on the left and a sticky preview on the right, stacke
 ## Screen 5: Pipeline
 
 `/runs/<run>/pipeline`. Start (or Resume once any stage has run) and Stop in the header, a Process panel (state, start and end, exit code, error), a Stages table (meetings per state for each stage, from `status.json`), and the tail of `process.log`, refreshed every 3 seconds while running. Starting a run on real backends opens a dialog listing the services each GPU phase leases. Stop sends an interrupt, as Ctrl-C would, so the lease releases its services, and Resume continues from the status files. Only one run can run at a time.
+
+## Guided flow
+
+`/` opens the guided flow when the builder is on. The sidebar's "Make a dataset" group holds it, "Details" holds the engineer screens above, and "Advanced" holds the settings form. Its state (description, topics, key terms, hours, the draft, the chat) is kept in the browser, so a reload keeps the user's place; once a run exists the server holds the rest. A step bar shows the five steps and links back to finished ones.
+
+1. **Describe** (`/create`). "Who's meeting, and where?" in free text with example chips; "What do they talk about?" as a numbered list of topics, one per meeting theme, each showing about how many meetings it gets, with paste and "Suggest topics for me" (from `config/defaults/topic_bank.yaml`); key terms with an optional "how is it said?" ("letters" spells a term out); and the amount of audio in hours. "Make a plan" sends the description to `POST /api/suggest` and creates nothing.
+2. **Plan** (`/create/plan`). The preview in plain sentences (room mix, people, calling in, presentations, length, topics), the GPU time, a "Couldn't do exactly" note for validation problems, and three example meetings with their mini floor plans. The chat panel sends each message to `POST /api/suggest`: applied changes come back as chips with Undo, and options the model is unsure of, or that always need the user's OK, as buttons. The meeting count follows the hours at the plan's mean length. "Make sample meetings" creates the pilot run and starts it, after a GPU confirmation for real backends.
+3. **Listen to samples** (`/create/pilot/<run>`). One tab per sample: who is in the room (role, seniority, how much they talk, language mixing, a voice button), the room recording, and every line with its time and a play button. A chat message that names a speaker and their voice ("S03 sounds robotic") swaps that speaker's voice in this sample only; any other change applies to every meeting and offers to remake the samples. "Looks good" creates the full run from the same draft and starts it.
+4. **Generate and review** (`/runs/<run>/review`). Progress per wave ("Batch 2 · recording voices"), Pause and Resume, the finished meetings, and a review panel: the recording with a seek bar, speaker lanes from the timeline with overlaps hatched, the lines around the playhead, Keep or Leave out, Download this meeting (a zip) and a link to the meeting detail.
+5. **Export** (`/runs/<run>/export`). Kept, left-out and audio totals, what every meeting includes, each speaker's own audio by cut (clips with a CSV, or full length) and sound (clean, or as heard in the room), the noise alone, sizes for every part, where the pack is written, and the export's progress.
+
+### Speaker pool (admin)
+
+`/admin/speakers`, only with `--admin`. The pool's version, speaker counts and how many runs use it; a table of speakers per split and ethnicity, with a draft's additions marked "+n"; importing a curated voice folder; the draft's new speakers with source, sheet attributes, usable clips, best clip score, the split the server assigned (and whether a recording partner set it) and a status; for a selected speaker, every clip with play, "Make main" and Leave out; and Publish, which says that older runs keep their pool and every speaker keeps their split. Admins never choose splits.
 
 ## Visual design
 

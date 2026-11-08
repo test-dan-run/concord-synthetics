@@ -17,7 +17,7 @@ from ..artifacts.io import file_sha256, read_model, write_model
 from ..artifacts.meeting import MeetingSpec
 from ..artifacts.models import JudgeResult, Script, ScriptValidation
 from ..config.schema import JudgeConfig, Phase, Role, RunConfig, ScriptRuleThresholds, StageId, TurnTakingConfig
-from ..text.singlish import Lexicon
+from ..text.singlish import run_lexicon
 from ..validators.judges import judge_script
 from ..validators.script_rules import check_script
 from .base import StageContext, StageResult
@@ -46,7 +46,7 @@ class ScriptValidationStage:
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         return Stage3Config(judge=cfg.judge, judge_pass=cfg.thresholds.judge_pass, judge_band=cfg.thresholds.judge_band,
                             rules=cfg.thresholds.script_rules, turn_taking=cfg.turn_taking,
-                            lexicon_version=Lexicon.load(cfg.lexicon.path).version,
+                            lexicon_version=run_lexicon(cfg).version,
                             primary=cfg.backends.roles.get(Role.JUDGE_PRIMARY, ""),
                             tiebreak=cfg.backends.roles.get(Role.JUDGE_TIEBREAK, ""))
 
@@ -56,7 +56,7 @@ class ScriptValidationStage:
         script = read_model(ctx.paths.script, Script)
         sha = file_sha256(ctx.paths.script)
         rnd = script.generator.round
-        lex = Lexicon.load(cfg.lexicon.path)
+        lex = run_lexicon(cfg)
 
         prev = None
         if ctx.paths.script_validation.is_file():

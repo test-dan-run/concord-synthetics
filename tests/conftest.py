@@ -9,11 +9,14 @@ from synthetics.config.schema import RunConfig
 from synthetics.nsc.pool import speaker_splits
 
 ROOT = Path(__file__).resolve().parents[1]
+# The first pool and its shared clip index (tests point NSC_REFS_DIR at fake clips of these 175 speakers)
+V1_POOL = {"speaker_pool.path": str(ROOT / "data/nsc_part3_reference_speakers.csv"), "speaker_pool.version": "p3-175-v1",
+           "speaker_pool.refs_index": None}
 
 
 def make_cfg(**overrides) -> RunConfig:
     base = {"run_id": "test", "seed": 1234, "n_meetings": 5, "backends.mode": "fake",
-            "speaker_pool.path": str(ROOT / "data/nsc_part3_reference_speakers.csv"),
+            **V1_POOL,
             "lexicon.path": str(ROOT / "backend/synthetics/config/defaults/singlish_lexicon.yaml")}
     base.update(overrides)
     return load_run_config(overrides=base)
@@ -31,7 +34,7 @@ def splits(cfg):
 
 ALWAYS = {"dist": "bernoulli", "p": 1.0}
 # large hybrid rooms with presenters and wall seats by choice, so every position type the viewer draws is present
-VIEWER_RUN = {"simulation.noise_library": None,
+VIEWER_RUN = {"simulation.noise_library": None, "simulation.write_stems": True,
               "room_classes.ratio": {"dist": "categorical", "weights": {"small": 0.0, "large": 1.0}},
               "room_classes.classes.large.speakers": {"dist": "int_uniform", "lo": 7, "hi": 9},
               "acoustics.hybrid": {"small": ALWAYS, "large": ALWAYS},

@@ -19,7 +19,7 @@ applied in that order over the defaults, exactly as `init-run --set` and `--conf
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from fastapi import FastAPI, HTTPException
@@ -45,10 +45,27 @@ class Draft(BaseModel):
     seed: int = Field(1, ge=0)
     overrides: dict[str, Any] = Field(default_factory=dict)  # dotted keys, e.g. "acoustics.hybrid.large.p"
     yaml: str = ""  # an overlay like a --config file; dotted keys work too
+    # A pilot: the first PILOT_MEETINGS meetings of the draft as `<run_id>-pilot`, in one wave, to listen to before
+    # the full run. Same seed and settings, so its meetings are the full run's first meetings.
+    pilot: bool = False
+
+
+PILOT_MEETINGS = 3
+PILOT_SUFFIX = "-pilot"
+
+
+class VoiceSwapIn(BaseModel):
+    speaker_id: str
 
 
 class StartRequest(BaseModel):
     confirm: bool = False  # required for a run that leases GPU services
+
+
+class ReviewIn(BaseModel):
+    meeting_id: str
+    decision: Literal["keep", "exclude"] | None
+    note: str = Field("", max_length=500)
 
 
 def _error(status: int, message: str, errors: list[dict] | None = None) -> HTTPException:
@@ -86,6 +103,11 @@ def build_config(draft: Draft) -> tuple[RunConfig, dict[str, Any]]:
         raise _error(422, "The overrides do not fit the config.", [{"loc": "overrides", "msg": str(exc)}]) from exc
 
 
+def _ethnicity_error(short: list[str]) -> HTTPException:
+    return _error(422, "The race mix cannot fill the largest meetings from the speaker pool.",
+                  [{"loc": "speaker_pool.ethnicity_mix", "msg": msg} for msg in short])
+
+
 def is_live(cfg: RunConfig) -> bool:
     return cfg.backends.mode in ("aicore", "record")
 
@@ -115,7 +137,7 @@ def preview(draft: Draft) -> dict:
     from ..nsc.pool import speaker_splits
     from ..orchestrator.run import resolve
     from ..stages.runner import meeting_id_for
-    from ..stages.s1_sample import run_meeting
+    from ..stages.s1_sample import ethnicity_shortfalls, run_meeting
     from ..validators.sampler_report import as_dicts, sampler_checks
 
     cfg, overrides = build_config(draft)
@@ -124,6 +146,9 @@ def preview(draft: Draft) -> dict:
         sp = speaker_splits(rc.speaker_pool.path, rc.speaker_pool.version)
     except (OSError, ValueError) as exc:
         raise _error(422, f"The speaker pool cannot be read: {exc}") from exc
+    short = ethnicity_shortfalls(rc, sp)
+    if short:
+        raise _ethnicity_error(short)
     n = min(cfg.n_meetings, PREVIEW_MAX)
     meetings, failures = [], []
     for i in range(1, n + 1):
@@ -136,7 +161,7 @@ def preview(draft: Draft) -> dict:
     plans = [{"meeting_id": m.meeting_id, **plan_of(m)} for m in meetings[:PREVIEW_PLANS]]
     return {"config_hash": config_hash(cfg), "revision": cfg.revision, "n_meetings": cfg.n_meetings,
             "n_sampled": n, "overrides": sorted(overrides), "meetings": [_row(m) for m in meetings], "plans": plans,
-            "checks": as_dicts(sampler_checks(rc, meetings)) if meetings else [], "failures": failures,
+            "checks": as_dicts(sampler_checks(rc, meetings, sp)) if meetings else [], "failures": failures,
             "live": is_live(cfg), "gpu_services": gpu_services(cfg) if is_live(cfg) else {},
             "stages_enabled": {str(int(s)): cfg.enabled(s) for s in cfg.stages},
             "audio_hours": round(minutes / 60, 2),
@@ -145,6 +170,10 @@ def preview(draft: Draft) -> dict:
 
 def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
     """The write routes, on the viewer app. `start` launches the background run (tests replace it)."""
+    from . import export_routes, suggest_routes
+
+    suggest_routes.add_routes(app)
+    export_routes.add_routes(app, runs)
 
     @app.get("/api/defaults")
     def defaults() -> dict:
@@ -161,8 +190,12 @@ def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
 
     @app.post("/api/runs", status_code=201)
     def create_run(draft: Draft) -> dict:
-        from ..orchestrator.run import init_run
+        from ..orchestrator.run import PoolShortfall, init_run
 
+        if draft.pilot:
+            draft = draft.model_copy(update={
+                "run_id": draft.run_id + PILOT_SUFFIX, "n_meetings": min(draft.n_meetings, PILOT_MEETINGS),
+                "overrides": {**draft.overrides, "phases.wave_size": PILOT_MEETINGS}, "pilot": False})
         if not RUN_ID.match(draft.run_id):
             raise _error(422, "Run ids use letters, digits, dot, dash and underscore, and start with a letter or digit.",
                          [{"loc": "run_id", "msg": "not a valid run id"}])
@@ -175,6 +208,8 @@ def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
                                root=runs.root)
         except FileExistsError as exc:
             raise _error(409, str(exc), [{"loc": "run_id", "msg": "already exists"}]) from exc
+        except PoolShortfall as exc:
+            raise _ethnicity_error(exc.problems) from exc
         return {"id": run_dir.name, "config_hash": config_hash(cfg), "live": is_live(cfg)}
 
     def run_config(run_dir: Path) -> RunConfig:
@@ -214,3 +249,76 @@ def add_routes(app: FastAPI, runs: Runs, *, start=background.start) -> None:
         if not background.stop(rp.run_dir):
             raise _error(409, f"{run_id} is not running.")
         return process_info(run_id)
+
+    @app.delete("/api/runs/{run_id}", status_code=204)
+    def delete_pilot(run_id: str) -> None:
+        """Delete a pilot run (only a `-pilot` run that is not running): its meetings were for listening only."""
+        import shutil
+
+        rp = runs.run(run_id)
+        if not run_id.endswith(PILOT_SUFFIX):
+            raise _error(409, "Only pilot runs can be deleted here.")
+        if background.running(rp.run_dir):
+            raise _error(409, f"{run_id} is running. Stop it first.")
+        shutil.rmtree(rp.run_dir)
+
+    @app.post("/api/runs/{run_id}/meetings/{meeting_id}/voice-swap")
+    def voice_swap(run_id: str, meeting_id: str, body: VoiceSwapIn) -> dict:
+        """Give one speaker of one meeting another voice: a same-split speaker with the same gender and ethnicity
+        (first language and age band when possible), the swap stage 5 would make. Stage 4 re-synthesises that
+        speaker on the next start, and the later stages follow; nothing else in the run changes."""
+        import json
+
+        from ..artifacts.io import read_model
+        from ..artifacts.models import SpeakerSplits
+        from ..artifacts.voice import ReferenceSwap, Synthesis
+        from ..config.schema import StageId
+        from ..nsc.references import references_for
+        from ..orchestrator.status import StatusStore
+
+        mp = runs.meeting(run_id, meeting_id)
+        rp = runs.run(run_id)
+        if background.running(rp.run_dir):
+            raise _error(409, f"{run_id} is running. Stop it first, or wait for it to finish.")
+        if not mp.synthesis.is_file():
+            raise _error(409, f"{meeting_id} has no voices yet.")
+        syn = read_model(mp.synthesis, Synthesis)
+        va = syn.voices.get(body.speaker_id)
+        if va is None:
+            raise _error(404, f"{meeting_id} has no speaker {body.speaker_id}.")
+        cfg = run_config(rp.run_dir)
+        refs = references_for(cfg)
+        splits = read_model(rp.speaker_splits, SpeakerSplits)
+        in_use = {v.nsc_speaker for v in syn.voices.values()} | {x for s in syn.swaps
+                                                                  for x in (s.from_speaker, s.to_speaker)}
+        new = refs.replacement(va.nsc_speaker, splits, in_use)
+        if new is None:
+            raise _error(409, "No other voice in this split matches the speaker's gender and ethnicity.")
+        swap = ReferenceSwap(speaker_id=body.speaker_id, kind="speaker", from_speaker=va.nsc_speaker,
+                             to_speaker=new, from_clip=va.clip_id, to_clip=refs.best(new).pair_id,
+                             reason="asked for in review")
+        StatusStore(rp.run_dir).update(meeting_id, StageId.VOICE, state="retry",
+                                       feedback=json.dumps({"resynth": [], "swaps": [swap.model_dump()]}))
+        return {"swap": swap.model_dump(), "next": "start the run to re-synthesise this speaker"}
+
+    @app.post("/api/runs/{run_id}/review")
+    def review_meeting(run_id: str, body: ReviewIn) -> dict:
+        """Mark a meeting kept or left out of the export (`decision: null` clears the mark). review.json sits
+        beside the run's results and nothing in the pipeline reads it, so a mark never changes a meeting."""
+        import json
+        import time
+
+        from ..artifacts.io import atomic_write_text
+        from .api import REVIEW
+
+        runs.meeting(run_id, body.meeting_id)  # 404 for an unknown run or meeting
+        rp = runs.run(run_id)
+        f = rp.run_dir / REVIEW
+        marks = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        if body.decision is None:
+            marks.pop(body.meeting_id, None)
+        else:
+            marks[body.meeting_id] = {"decision": body.decision, "note": body.note,
+                                      "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+        atomic_write_text(f, json.dumps(dict(sorted(marks.items())), indent=2) + "\n")
+        return marks

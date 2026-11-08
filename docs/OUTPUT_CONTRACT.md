@@ -15,6 +15,7 @@ A run lives in `runs/<run_id>/`, or under `SYNTHETICS_RUNS` when that is set.
 runs/<run_id>/
   config.yaml                  frozen run config (every distribution and setting used)
   speaker_splits.json          NSC speaker -> train / dev / test (fixed by the pool CSV)
+  review.json                  keep or leave-out marks from the viewer's review screen (optional)
   manifest.jsonl               one line per finished meeting (stage 8 passed)
   meetings/<meeting_id>/
     status.json                per-stage state, attempts, times, detail line and metrics
@@ -29,6 +30,8 @@ runs/<run_id>/
     tracks/<speaker_id>.wav    dry, time-aligned speech per speaker (stage 6)
     mixture.wav                the single-channel recording (stage 7)
     mixture_mc.wav             the multichannel recording, only for array mics (stage 7)
+    stems/<speaker_id>.wav     one speaker as heard at the mic, with simulation.write_stems (stage 7)
+    noise.wav                  the noise alone as heard at the mic, with simulation.write_stems (stage 7)
     render.json                what the acoustic simulation measured and applied (stage 7)
     labels/meeting.rttm        speaker turns (stage 8)
     labels/transcript.json     word-level transcript (stage 8)
@@ -44,7 +47,9 @@ for the pipeline team only and are not part of the output contract.
 A meeting is complete when its `status.json` shows `pass` for stage 8. Only complete meetings appear in
 `manifest.jsonl`. The manifest's `files` map gives the paths of the labelled outputs relative to the run
 directory (`meeting`, `script`, `timeline`, `tracks`, `rttm`, `transcript`, and `mixture`, `render` and
-`mixture_mc` when stage 7 ran). The other files are at the fixed paths above.
+`mixture_mc` when stage 7 ran, plus `stems` and `noise` when it wrote them). The other files are at the fixed paths
+above. `review.json` maps a meeting id to `{decision: keep | exclude, note, at}`; the pipeline never reads it, and
+the viewer leaves excluded meetings out of export packs.
 
 ## Time and audio
 
@@ -60,6 +65,13 @@ rate (`sample_rate` in `config.yaml`, 16 kHz by default) and the same number of 
 - `tracks/<speaker_id>.wav` holds one speaker's utterances at their timeline positions, dry (no room, noise or
   device), and silence elsewhere. A truncated utterance stops at its cut point with a 10 ms fade. The tracks are
   meant for separation targets and for checking labels against clean speech.
+- `stems/<speaker_id>.wav` (with `simulation.write_stems`, on for new runs) is one speaker as heard at the mic:
+  their segments through the room, at their distance and facing, at the level they have in the mixture. It is mono
+  and goes through the same band limit, gains and AGC gain curve as `mixture.wav`, but not clipping or the codec.
+  `noise.wav` holds the noise beds, typing and events in the same way. The stems plus the noise add up to the
+  mixture before clipping and the codec, within 16-bit rounding. A remote participant's stem includes their far-end
+  path but not the echo canceller's ducking, which acts on the summed room signal. Writing stems never changes the
+  mixture. `render.json` lists them in `files` as `stem:<speaker_id>` and `noise`.
 
 The device chain is applied in this order: band limit, then AGC, then clipping, then the codec. `render.json`
 records what was applied, for example the AGC gain range and the share of clipped samples.
@@ -175,7 +187,9 @@ The viewer reads these files directly (see the "Data contract" section of `UI_DE
 `tests/test_viewer_contract.py` runs the same check on a fake run.
 
 Splits are speaker-disjoint. Every speaker in a meeting comes from the meeting's split, and the split of every NSC
-speaker is fixed by `data/nsc_part3_reference_speakers.csv` and copied into `speaker_splits.json`.
+speaker is fixed by the run's pool CSV (`speaker_pool.path`: `data/nsc_part3_reference_speakers.csv` for the first
+pool, `data/pools/<version>.csv` for a grown one) and copied into `speaker_splits.json`. A grown pool keeps every
+earlier speaker's split, so splits stay disjoint across runs on different pools.
 
 ## Acoustic report (`render.json`)
 
@@ -186,6 +200,27 @@ first mic, and stage 7 fails when it is more than `simulation.rt60_tolerance` (1
 `snr_db` is speech power over the power of the noise beds (HVAC and projector fan) on the single-channel signal
 before the device chain. Keyboard typing and events (door, chair, cup, paper) are set relative to the speech level
 and are listed in `noise` with their times and positions.
+
+## Export packs
+
+The viewer's Export screen (and `export/pack.py`) writes the kept meetings of a run to a folder, as files that need
+no pipeline to read. Every WAV in a pack is 16-bit mono PCM at 16 kHz, resampled when a run used another rate.
+
+```
+<pack>/README.md                          what the pack holds, in words
+<pack>/manifest.jsonl                     the kept meetings' manifest lines
+<pack>/<meeting_id>/mixture.wav           the recording
+<pack>/<meeting_id>/meeting.json, timeline.json, labels/meeting.rttm, labels/transcript.json
+<pack>/<meeting_id>/speakers/clean/<speaker_id>.wav   full length, from tracks/ (optional)
+<pack>/<meeting_id>/speakers/room/<speaker_id>.wav    full length, from stems/ (optional)
+<pack>/<meeting_id>/clips/clean/<turn_id>.wav         one line, cut from tracks/ (optional)
+<pack>/<meeting_id>/clips/room/<turn_id>.wav          one line, cut from stems/, with 0.3 s of echo tail (optional)
+<pack>/<meeting_id>/clips/clips.csv                   clip, speaker_id, start, end, text, text_norm, truncated
+<pack>/<meeting_id>/noise.wav                         the noise alone (optional)
+```
+
+Clips are cut at the timeline's bounds, so a line cut short by an interruption ends where it was cut, and they are
+never taken from `utterances/`, which holds whole lines. `text` and `text_norm` come from `labels/transcript.json`.
 
 ## Quality gates
 

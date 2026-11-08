@@ -72,6 +72,42 @@ class Lexicon:
             return t
         return self.nonspeech_variants.get(t)
 
+    def with_terms(self, terms) -> Lexicon:
+        """The lexicon plus a run's key terms (`RunConfig.key_terms`): each term's spelling becomes canonical, so
+        a script writing "singpass" is labelled "SingPass", and a term's pronunciation becomes a TTS hint. Only the
+        TTS text is respelled; transcripts keep the term. No terms: this lexicon, with the same version, so runs
+        without key terms keep their cache keys."""
+        if not terms:
+            return self
+        import hashlib
+        import json
+        from dataclasses import replace
+
+        loanwords, hints = dict(self.loanwords), dict(self.tts_hints)
+        for t in terms:
+            if t.term.lower() != t.term:
+                loanwords[t.term.lower()] = t.term
+            if t.say:
+                hints[t.term] = spoken_as(t.term, t.say)
+        tag = hashlib.sha256(json.dumps([[t.term, t.say] for t in terms]).encode()).hexdigest()[:8]
+        return replace(self, version=f"{self.version}+kt-{tag}", loanwords=loanwords, tts_hints=hints)
+
+
+LETTERS_SAY = ("letters", "each letter", "say each letter", "spell it", "spelled out", "spelt out")
+
+
+def spoken_as(term: str, say: str) -> str:
+    """The respelling the TTS reads for a key term: its letters one by one ("P D P C") when `say` asks for that,
+    else `say` itself ("sing pass")."""
+    if say.strip().lower() in LETTERS_SAY:
+        return " ".join(ch.upper() for ch in term if ch.isalnum())
+    return say.strip()
+
+
+def run_lexicon(cfg) -> Lexicon:
+    """The lexicon a run's stages use: the configured file plus the run's key terms."""
+    return Lexicon.load(cfg.lexicon.path).with_terms(cfg.key_terms)
+
 
 @lru_cache(maxsize=8)
 def _load(path: str) -> Lexicon:

@@ -191,6 +191,15 @@ BRIEF_SCHEMA = {"title": "meeting_brief", "type": "object", "additionalPropertie
                                                                           "stance": {"type": "string"}}}}}}
 
 
+def key_terms_line(terms) -> str:
+    """The run's key terms as one instruction, appended to the brief and the script system prompt; "" when the
+    run has none, so prompts without key terms are byte for byte what they were."""
+    if not terms:
+        return ""
+    return ("\n\nWhere they fit the discussion, use these terms, spelled exactly like this: "
+            + ", ".join(t.term for t in terms) + ". Do not force every term into every meeting.")
+
+
 def roster_lines(m: MeetingSpec) -> str:
     lines = []
     for p in m.people:

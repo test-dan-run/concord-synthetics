@@ -131,6 +131,10 @@ def build_entry(paths: MeetingPaths, cfg: RunConfig, *, aligner: str) -> Manifes
         files.update({"mixture": "mixture.wav", "render": "render.json"})
         if "mixture_mc" in render.files:
             files["mixture_mc"] = "mixture_mc.wav"
+        if any(k.startswith("stem:") for k in render.files):
+            files["stems"] = "stems"  # one WAV per speaker as heard at the mic
+        if "noise" in render.files:
+            files["noise"] = render.files["noise"]
     from ..stages.runner import meeting_seed
 
     return ManifestEntry(run_id=cfg.run_id, meeting_id=m.meeting_id, seed=meeting_seed(cfg.seed, m.meeting_id),

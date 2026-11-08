@@ -14,6 +14,8 @@ from ..config.schema import Phase, StageId
 app = typer.Typer(no_args_is_help=True, add_completion=False, help=__doc__)
 nsc_app = typer.Typer(no_args_is_help=True, help="NSC Part 3 reference data.")
 app.add_typer(nsc_app, name="nsc")
+pool_app = typer.Typer(no_args_is_help=True, help="Voice pools: grow one from a voice folder, check one.")
+app.add_typer(pool_app, name="pool")
 
 RunOpt = Annotated[str, typer.Option("--run", "-r", help="run id under SYNTHETICS_RUNS, or a run directory")]
 
@@ -109,7 +111,7 @@ def run(run: RunOpt,
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    rep = sched.run(until=StageId(until), only=Phase(only) if only else None)
+    rep = sched.run_waves(until=StageId(until), only=Phase(only) if only else None)
     write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId(until)), indent=2))
 
@@ -121,7 +123,7 @@ def resume(run: RunOpt, keep_services: Annotated[bool, typer.Option()] = False):
     from .scheduler import summarise
 
     rd, sched = _scheduler(run, keep_services)
-    rep = sched.run(until=StageId.LABELS)
+    rep = sched.run_waves(until=StageId.LABELS)
     write_run_report(rd, rep.phase_seconds)
     typer.echo(json.dumps(summarise(rd, StageId.LABELS), indent=2))
 
@@ -219,7 +221,7 @@ def sampler_report(n: Annotated[int, typer.Option()] = 1000, seed: Annotated[int
     cfg = resolve(load_run_config(*config, overrides={"run_id": "sampler-report", "seed": seed, "n_meetings": n}))
     sp = speaker_splits(cfg.speaker_pool.path, cfg.speaker_pool.version)
     ms = [run_meeting(cfg, sp, meeting_id_for(i)) for i in range(1, n + 1)]
-    checks = sampler_checks(cfg, ms)
+    checks = sampler_checks(cfg, ms, sp)
     typer.echo(render(checks))
     if out:
         out.write_text(json.dumps(as_dicts(checks), indent=2))
@@ -319,6 +321,26 @@ def viewer_contract(run: RunOpt, as_json: Annotated[bool, typer.Option("--json",
     raise typer.Exit(0 if all(r.ok for r in rows) else 1)
 
 
+@app.command("suggest-eval")
+def suggest_eval(fake: Annotated[bool, typer.Option("--fake", help="score the word-matching fake")] = False,
+                 data: Annotated[Path, typer.Option()] = Path("tests/data/suggest_eval.jsonl"),
+                 misses: Annotated[bool, typer.Option("--misses", help="list every wrong answer")] = False):
+    """Score the decision model (the `decision` role's CPU service) on labelled requests."""
+    from ..suggest.evaluate import evaluate, load_eval
+    from ..suggest.models import FakeDecisionModel
+    from ..viewer.suggest_routes import decision_model
+    from .run import app_path
+
+    model, name = (FakeDecisionModel(), "fake") if fake else decision_model()
+    if name == "fake" and not fake:
+        typer.echo("the decision service is not on the platform; pass --fake to score the fake")
+        raise typer.Exit(1)
+    res = evaluate(model, load_eval(app_path(data)))
+    if not misses:
+        res.pop("misses")
+    typer.echo(json.dumps({"model": name, **res}, indent=2))
+
+
 @app.command("calibrate-sv")
 def calibrate_sv(out: Annotated[Path, typer.Option(help="YAML overlay to write")] = Path("config/sv_thresholds.yaml"),
                  mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",
@@ -336,16 +358,57 @@ def calibrate_sv(out: Annotated[Path, typer.Option(help="YAML overlay to write")
 # ---------------------------------------------------------------- NSC
 
 
+@pool_app.command("build")
+def pool_build(source: Annotated[Path, typer.Option("--from", help="voice folder (speakers.csv, manifest.jsonl)")],
+               version: Annotated[str, typer.Option(help="new pool version, e.g. p3-406-v2")],
+               base: Annotated[Path, typer.Option(help="pool CSV to grow")] = Path(
+                   "data/nsc_part3_reference_speakers.csv"),
+               base_version: Annotated[str, typer.Option(help="its version, when it has no sidecar")] = "p3-175-v1",
+               seed: Annotated[int, typer.Option()] = 2026,
+               out: Annotated[Path | None, typer.Option(help="default data/pools/<version>.csv")] = None):
+    """Grow a pool: base speakers keep their split, partners share one, the rest follow the meeting split mix."""
+    from ..config.loader import load_run_config
+    from ..nsc.pool_build import base_version_of, draft_pool, publish
+    from .run import app_path
+
+    mix = load_run_config(overrides={"run_id": "pool", "seed": 1, "n_meetings": 1}).speaker_pool.split_mix.weights
+    mix = {str(k): float(v) for k, v in mix.items()}
+    base_path = app_path(base)
+    out_path = app_path(out or Path(f"data/pools/{version}.csv"))
+    if out_path.exists():
+        typer.echo(f"{out_path} exists; pools are never rewritten, pick a new version")
+        raise typer.Exit(1)
+    d = draft_pool(base_path, source, split_mix=mix, seed=seed)
+    meta = publish(d, out_path, version=version, base_path=base_path,
+                   base_version=base_version_of(base_path, base_version), folder=source, seed=seed, split_mix=mix)
+    typer.echo(json.dumps({"pool": str(out_path), "speakers": meta.total, "counts": meta.counts,
+                           "added": len(d.added), "by_partner": len(d.forced), "left_out": d.left_out}, indent=2))
+
+
+@pool_app.command("validate")
+def pool_validate(path: Annotated[Path, typer.Argument(help="pool CSV")] = Path(
+                      "data/nsc_part3_reference_speakers.csv"),
+                  nsc_dir: Annotated[Path | None, typer.Option(help="also check every SDM zip is here")] = None):
+    """Check a pool against its sidecar's counts (the first pool: 175 speakers), plus partner pairs."""
+    from ..nsc.pool import check_pool
+    from .run import app_path
+
+    problems = check_pool(app_path(path), nsc_dir)
+    for p in problems:
+        typer.echo(f"problem: {p}")
+    typer.echo("pool ok" if not problems else f"{len(problems)} problem(s)")
+    raise typer.Exit(0 if not problems else 1)
+
+
 @nsc_app.command("validate")
 def nsc_validate(nsc_dir: Annotated[Path | None, typer.Option(help="NSC Part 3 root (holds SDM/)")] = None):
     """Check the pool CSV: 175 unique speakers, every zip present, split sizes, partner pairs."""
-    from ..nsc.pool import load_pool, validate_pool
+    from ..nsc.pool import check_pool
     from ..nsc.settings import nsc_paths
     from .run import app_path
 
     paths = nsc_paths(nsc_dir)
-    pool = load_pool(app_path("data/nsc_part3_reference_speakers.csv"))
-    problems = validate_pool(pool, paths.nsc_dir)
+    problems = check_pool(app_path("data/nsc_part3_reference_speakers.csv"), paths.nsc_dir)
     for p in problems:
         typer.echo(f"problem: {p}")
     typer.echo("pool ok" if not problems else f"{len(problems)} problem(s)")
@@ -422,7 +485,9 @@ def viewer(host: Annotated[str, typer.Option()] = "127.0.0.1",
            port: Annotated[int, typer.Option(envvar="SYNTHETICS_PORT")] = 8610,
            reload: Annotated[bool, typer.Option(help="reload on backend changes")] = False,
            read_only: Annotated[bool, typer.Option("--read-only", envvar="SYNTHETICS_READ_ONLY",
-                                                   help="leave out the run builder (create, start, stop)")] = False):
+                                                   help="leave out the run builder (create, start, stop)")] = False,
+           admin: Annotated[bool, typer.Option("--admin", envvar="SYNTHETICS_ADMIN",
+                                               help="add the speaker pool admin page and routes")] = False):
     """The Room Config Viewer: the API over SYNTHETICS_RUNS, the run builder, and the built frontend (frontend/dist)."""
     import os
 
@@ -430,6 +495,8 @@ def viewer(host: Annotated[str, typer.Option()] = "127.0.0.1",
 
     if read_only:
         os.environ["SYNTHETICS_READ_ONLY"] = "1"  # read by the app factory, also in reload workers
+    if admin:
+        os.environ["SYNTHETICS_ADMIN"] = "1"
 
     uvicorn.run("synthetics.viewer.api:app", factory=True, host=host, port=port, reload=reload,
                 reload_dirs=["backend"] if reload else None)
