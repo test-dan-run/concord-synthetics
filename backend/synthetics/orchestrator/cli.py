@@ -321,6 +321,39 @@ def viewer_contract(run: RunOpt, as_json: Annotated[bool, typer.Option("--json",
     raise typer.Exit(0 if all(r.ok for r in rows) else 1)
 
 
+DECISION_DATA = Path("/home/user/code/datasets/synthetics-decisions")
+
+
+@app.command("suggest-data")
+def suggest_data(n: Annotated[int, typer.Option(help="rows in the file when done")] = 2000,
+                 seed: Annotated[int, typer.Option()] = 2026,
+                 out: Annotated[Path, typer.Option(help="JSONL, appended to; rows already there are kept")] = (
+                     DECISION_DATA / "requests-v1.jsonl"),
+                 mode: Annotated[str, typer.Option(help="aicore | fake | replay | record")] = "aicore",
+                 lease: Annotated[bool, typer.Option(help="start/stop the generator through stack.py")] = True,
+                 workers: Annotated[int, typer.Option(help="requests in flight at once")] = 16):
+    """Write labelled requests for a decision model: labels drawn from questions.yaml, words from the generator."""
+    from ..backends.registry import Backends
+    from ..config.loader import load_run_config
+    from ..config.schema import Role
+    from ..suggest.datagen import generate, read_rows
+    from .lease import GpuLease
+    from .run import resolve
+
+    cfg = resolve(load_run_config(overrides={"run_id": "suggest-data", "seed": 0, "n_meetings": 0,
+                                             "backends.mode": mode}))
+    llm = Backends(cfg.backends, [Role.GENERATOR]).get(Role.GENERATOR)
+    done = [r["id"] for r in read_rows(out)]
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with GpuLease([cfg.backends.roles[Role.GENERATOR]], platform_dir=cfg.phases.platform_dir,
+                  no_evict=cfg.phases.no_evict, timeout_s=cfg.phases.lease_timeout_s,
+                  enabled=lease and mode in ("aicore", "record")), out.open("a", encoding="utf-8") as fh:
+        for row in generate(llm, n, seed, done=done, workers=workers, log=typer.echo):
+            fh.write(json.dumps(row.__dict__, ensure_ascii=False) + "\n")
+            fh.flush()
+    typer.echo(f"{len(read_rows(out))} rows in {out}")
+
+
 @app.command("suggest-eval")
 def suggest_eval(fake: Annotated[bool, typer.Option("--fake", help="score the word-matching fake")] = False,
                  data: Annotated[Path, typer.Option()] = Path("tests/data/suggest_eval.jsonl"),

@@ -51,6 +51,7 @@ just viewer-dev                               # API with reload + Vite on :5174
 uv run synthetics viewer --admin              # also the speaker pool admin page
 uv run synthetics pool build --from <folder> --version <v>   # grow the pool from a curated voice folder
 just suggest-eval --fake                      # score a decision model on labelled requests
+uv run synthetics suggest-data --n 2000       # labelled requests for a decision model (leases the generator)
 ```
 
 `just test` skips tests marked `live` (need platform services, `just test-live`) and `slow`. `just --list`

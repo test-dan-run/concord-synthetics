@@ -505,7 +505,12 @@ Orchestration:
   group. Laya's gates separate mentioned from unmentioned groups best (0.89 to 0.93 AUC, against 0.79 for d1 and
   chance for Julia-1), but its yes answers mostly fall below `gate_min`, so it misses most of what a request asks
   for; it picks the right option 52% of the time when asked directly. The viewer therefore uses word matching
-  unless `SYNTHETICS_DECISION_SERVICE=1` is set.
+  unless `SYNTHETICS_DECISION_SERVICE=1` is set. Training data for a fine-tune comes from `synthetics suggest-data`
+  (`suggest/datagen.py`): labels are drawn first from `questions.yaml` with a seeded RNG (a few groups and
+  options, a room scope, the global answers), and the generator then writes one request for them, told what to
+  ask for and what to leave out. `laya_rows` turns a row into Laya's fine-tuning format with the questions asked
+  exactly as the engine asks them: every gate, the chosen groups' choices, and a few unchanged choices of other
+  groups. The rows live in `/home/user/code/datasets/synthetics-decisions/`.
 - **Execution.** One meeting and one request at a time, with `status.json` deciding what is left. Correctness comes
   before speed, and the stage interfaces keep any future concurrency confined to the scheduler and the backend
   clients. The 20-meeting reference run `m9-e2e` took about 9 hours, the largest share in phase C, and `resume` makes
