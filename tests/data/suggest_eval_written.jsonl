@@ -1,0 +1,146 @@
+{"request": "Only big rooms, nothing small", "expect": {"room_mix": "all_large"}}
+{"request": "mostly small huddles pls", "expect": {"room_mix": "mostly_small"}}
+{"request": "Every meeting is a small group around one laptop", "expect": {"room_mix": "all_small"}}
+{"request": "Mix it evenly between small and big meetings", "expect": {"room_mix": "balanced"}}
+{"request": "More of the large boardroom sessions than the small ones", "expect": {"room_mix": "mostly_large"}}
+{"request": "can have more people in each meeting?", "expect": {"meeting_size": "larger"}}
+{"request": "Packed meetings, as many attendees as you can fit", "expect": {"meeting_size": "largest"}}
+{"request": "Fewer people per meeting, like small teams only", "expect": {"meeting_size": "smaller"}}
+{"request": "Meetings of about 12 people", "expect": {"meeting_size": "larger"}}
+{"request": "Two or three people per call max", "expect": {"meeting_size": "smaller"}}
+{"request": "Cut the meeting length roughly in half", "expect": {"length": "much_shorter"}}
+{"request": "Slightly shorter meetings", "expect": {"length": "shorter"}}
+{"request": "meetings can run a bit longer", "expect": {"length": "longer"}}
+{"request": "Long marathon meetings, twice as long as now", "expect": {"length": "much_longer"}}
+{"request": "Quick 10 minute syncs", "expect": {"length": "much_shorter"}}
+{"request": "People constantly talk at the same time", "expect": {"overlap": "much_more"}}
+{"request": "A little more crosstalk", "expect": {"overlap": "more"}}
+{"request": "Less overlapping speech please", "expect": {"overlap": "less"}}
+{"request": "Almost no overlap, one person at a time", "expect": {"overlap": "much_less"}}
+{"request": "Speakers sometimes overlap a bit more than now", "expect": {"overlap": "more"}}
+{"request": "Nobody ever interrupts", "expect": {"interruptions": "none"}}
+{"request": "A few more interruptions", "expect": {"interruptions": "more"}}
+{"request": "People keep cutting each other off all the time", "expect": {"interruptions": "many_more"}}
+{"request": "Fewer interruptions, more polite", "expect": {"interruptions": "fewer"}}
+{"request": "Lots of 'mm' and 'ya' from listeners", "expect": {"backchannels": "more"}}
+{"request": "Listeners barely make a sound while others talk", "expect": {"backchannels": "fewer"}}
+{"request": "Constant uh-huhs and okays, way more than usual", "expect": {"backchannels": "many_more"}}
+{"request": "Everyone gets an equal share of talking time", "expect": {"dominance": "equal"}}
+{"request": "Talking a bit more evenly spread", "expect": {"dominance": "more_even"}}
+{"request": "A couple of people do most of the talking", "expect": {"dominance": "dominated"}}
+{"request": "The manager talks nonstop and almost everyone else is silent", "expect": {"dominance": "strongly_dominated"}}
+{"request": "Faster conversation", "expect": {"pace": "faster"}}
+{"request": "Very fast ping-pong exchanges with tiny turns", "expect": {"pace": "much_faster"}}
+{"request": "slow it down abit", "expect": {"pace": "slower"}}
+{"request": "Very slow, people give long speeches each turn", "expect": {"pace": "much_slower"}}
+{"request": "More Singlish", "expect": {"code_switching": "more"}}
+{"request": "Proper English only, hardly any mixing", "expect": {"code_switching": "little"}}
+{"request": "Speakers switch between English, Malay and Hokkien constantly", "expect": {"code_switching": "heavy"}}
+{"request": "Some Mandarin phrases mixed in more often", "expect": {"code_switching": "more"}}
+{"request": "Someone presents slides in nearly every meeting", "expect": {"presentations": "most"}}
+{"request": "No one presents anything", "expect": {"presentations": "none"}}
+{"request": "A few more presentations", "expect": {"presentations": "more"}}
+{"request": "Fewer presentation-style meetings", "expect": {"presentations": "fewer"}}
+{"request": "No remote participants at all", "expect": {"hybrid": "none"}}
+{"request": "Nearly every meeting has people calling in", "expect": {"hybrid": "most"}}
+{"request": "Bit more people joining online", "expect": {"hybrid": "more"}}
+{"request": "Fewer video call participants", "expect": {"hybrid": "fewer"}}
+{"request": "Someone usually sits by the wall", "expect": {"wall_seats": "usually"}}
+{"request": "People often sit at the back of the room", "expect": {"wall_seats": "often"}}
+{"request": "Nobody sits away from the table unless it's full", "expect": {"wall_seats": "never"}}
+{"request": "The chair always takes the head seat", "expect": {"chair_position": "always_head"}}
+{"request": "Chairperson can sit wherever", "expect": {"chair_position": "anywhere"}}
+{"request": "Rooms ring like a stairwell, huge echo", "expect": {"reverb": "much_more_echo"}}
+{"request": "A touch more room reverb", "expect": {"reverb": "more_echo"}}
+{"request": "Slightly less echo", "expect": {"reverb": "a_bit_drier"}}
+{"request": "Totally dead acoustic rooms, no echo at all", "expect": {"reverb": "much_drier"}}
+{"request": "A little background hum", "expect": {"noise": "a_bit_noisier"}}
+{"request": "Extremely noisy, like a food court", "expect": {"noise": "much_noisier"}}
+{"request": "Slightly cleaner audio, less background noise", "expect": {"noise": "a_bit_cleaner"}}
+{"request": "Pristine recordings with zero background noise", "expect": {"noise": "much_cleaner"}}
+{"request": "Mic sits right in the middle of the table", "expect": {"mic_placement": "centre"}}
+{"request": "Usually put the mic near the chair", "expect": {"mic_placement": "often_chair"}}
+{"request": "Mic always goes in front of whoever is chairing", "expect": {"mic_placement": "always_chair"}}
+{"request": "Use a microphone array every time", "expect": {"mic_array": "always"}}
+{"request": "Just one mic, no arrays", "expect": {"mic_array": "never"}}
+{"request": "Audio sounds like it came through Zoom", "expect": {"device": "call_apps"}}
+{"request": "Bad cheap mics everywhere", "expect": {"device": "poor_devices"}}
+{"request": "High-end recording gear, uncompressed", "expect": {"device": "clean_devices"}}
+{"request": "Slightly better microphones", "expect": {"device": "a_bit_cleaner"}}
+{"request": "More Indian speakers", "expect": {"race": "more_indian"}}
+{"request": "Only Malay speakers", "expect": {"race": "only_malay"}}
+{"request": "Equal numbers of Chinese, Malay and Indian people", "expect": {"race": "balanced"}}
+{"request": "Mostly Chinese speakers", "expect": {"race": "more_chinese"}}
+{"request": "Leave out the Others group, just the three main races", "expect": {"race": "no_others"}}
+{"request": "Only Indian voices", "expect": {"race": "only_indian"}}
+{"request": "Keep the race mix like the speaker pool", "expect": {"race": "as_pool"}}
+{"request": "This will mostly be used for training", "expect": {"splits": "training"}}
+{"request": "It's for testing our model", "expect": {"splits": "evaluation"}}
+{"request": "Split train, dev and test more evenly", "expect": {"splits": "balanced"}}
+{"request": "Skip the script judge", "expect": {"stages": "no_judge"}}
+{"request": "No acoustic simulation, I only need clean tracks", "expect": {"stages": "no_simulation"}}
+{"request": "Turn off the voice validation step", "expect": {"stages": "no_voice_checks"}}
+{"request": "Run it without the GPU, fake models are fine", "expect": {"backends": "fake"}}
+{"request": "Make the data harder overall", "expect": {"overlap": "more", "interruptions": "more", "noise": "a_bit_noisier", "reverb": "more_echo"}}
+{"request": "Easier data in general", "expect": {"overlap": "less", "interruptions": "fewer", "noise": "a_bit_cleaner", "reverb": "a_bit_drier"}}
+{"request": "Just a quick trial to see it works", "expect": {"length": "much_shorter", "backends": "fake"}}
+{"request": "Thanks, that looks good", "expect": {}}
+{"request": "What does this tool do?", "expect": {}}
+{"request": "Meetings about the new CRM launch", "expect": {}}
+{"request": "Make one speaker sound angry", "expect": {}}
+{"request": "Include words like 'Synapse' and 'roadmap'", "expect": {}}
+{"request": "Big meetings with lots of people", "expect": {"room_mix": "mostly_large", "meeting_size": "larger"}}
+{"request": "Small rooms, short calls", "expect": {"room_mix": "mostly_small", "length": "shorter"}}
+{"request": "Noisy and echoey", "expect": {"noise": "a_bit_noisier", "reverb": "more_echo"}}
+{"request": "Super noisy rooms with tons of echo", "expect": {"noise": "much_noisier", "reverb": "much_more_echo"}}
+{"request": "Clean audio, dry rooms", "expect": {"noise": "a_bit_cleaner", "reverb": "a_bit_drier"}}
+{"request": "Heated debates, everyone interrupting and talking over each other", "expect": {"interruptions": "many_more", "overlap": "much_more"}}
+{"request": "Calm orderly meetings, nobody interrupts, no overlap", "expect": {"interruptions": "none", "overlap": "much_less"}}
+{"request": "One boss, quiet juniors, long monologues", "expect": {"dominance": "strongly_dominated", "pace": "much_slower"}}
+{"request": "Lots of hybrid calls over Teams", "expect": {"hybrid": "most", "device": "call_apps"}}
+{"request": "More Malay speakers and more Malay mixed into the English", "expect": {"race": "more_malay", "code_switching": "more"}}
+{"request": "Test set only, no GPU needed", "expect": {"splits": "evaluation", "backends": "fake"}}
+{"request": "Fast chatty stand-ups with lots of mm-hmms", "expect": {"pace": "faster", "backchannels": "more"}}
+{"request": "Presentations in most meetings and the mic in the centre", "expect": {"presentations": "most", "mic_placement": "centre"}}
+{"request": "Boss at the head of the table, mic in front of him", "expect": {"chair_position": "always_head", "mic_placement": "always_chair"}}
+{"request": "People sit along the wall a lot and we need a mic array", "expect": {"wall_seats": "often", "mic_array": "always"}}
+{"request": "Longer meetings with slower discussion", "expect": {"length": "longer", "pace": "slower"}}
+{"request": "Twenty people in a room, half of them remote", "expect": {"meeting_size": "largest", "hybrid": "more"}}
+{"request": "Small groups of four, everyone talks equally", "expect": {"meeting_size": "smaller", "dominance": "equal"}}
+{"request": "Training data with heavy Singlish and lots of interruptions", "expect": {"splits": "training", "code_switching": "heavy", "interruptions": "many_more"}}
+{"request": "Echoey rooms, cheap laptop mics, people talking over each other", "expect": {"reverb": "more_echo", "device": "poor_devices", "overlap": "more"}}
+{"request": "Only small meetings, no remote people, clean audio", "expect": {"room_mix": "all_small", "hybrid": "none", "noise": "a_bit_cleaner"}}
+{"request": "Mostly large rooms, presenters often, mic near the chair", "expect": {"room_mix": "mostly_large", "presentations": "more", "mic_placement": "often_chair"}}
+{"request": "Chinese speakers only, fast pace, little code-switching", "expect": {"race": "only_chinese", "pace": "faster", "code_switching": "little"}}
+{"request": "Meetings that go on for ages with one person dominating", "expect": {"length": "much_longer", "dominance": "dominated"}}
+{"request": "Half-hour sessions about budget planning", "expect": {}}
+{"request": "aircon very loud lah", "expect": {"noise": "much_noisier"}}
+{"request": "can make everyone talk same same amount?", "expect": {"dominance": "equal"}}
+{"request": "dun want so many people talk on top of each other", "expect": {"overlap": "less"}}
+{"request": "more people dial in from home can?", "expect": {"hybrid": "more"}}
+{"request": "rooms abit echo can", "expect": {"reverb": "more_echo"}}
+{"request": "shiok if the meetings shorter lah", "expect": {"length": "shorter"}}
+{"request": "more malay people pls", "expect": {"race": "more_malay"}}
+{"request": "boss always sit at the front of table one", "expect": {"chair_position": "always_head"}}
+{"request": "got more people saying 'ok ok' and 'ya' while others talk", "expect": {"backchannels": "more"}}
+{"request": "no need presentation lah", "expect": {"presentations": "none"}}
+{"request": "actually make the rooms bigger", "expect": {"room_mix": "mostly_large"}}
+{"request": "change it to fewer people per meeting", "expect": {"meeting_size": "smaller"}}
+{"request": "now drop the noise a bit", "expect": {"noise": "a_bit_cleaner"}}
+{"request": "undo the echo, make it much drier", "expect": {"reverb": "much_drier"}}
+{"request": "also add more interruptions", "expect": {"interruptions": "more"}}
+{"request": "and switch to a single microphone", "expect": {"mic_array": "never"}}
+{"request": "let's make it mostly test data instead", "expect": {"splits": "evaluation"}}
+{"request": "ok now speed things up a lot", "expect": {"pace": "much_faster"}}
+{"request": "In our meetings the juniors rarely speak up", "expect": {"dominance": "dominated"}}
+{"request": "Our team always has a few people joining from overseas on video", "expect": {"hybrid": "most"}}
+{"request": "Everyone sits around the table, nobody at the side", "expect": {"wall_seats": "never"}}
+{"request": "The rooms have carpet and acoustic panels", "expect": {"reverb": "a_bit_drier"}}
+{"request": "Our office is next to a construction site, it's really loud", "expect": {"noise": "much_noisier"}}
+{"request": "We record everything on our phones", "expect": {"device": "poor_devices"}}
+{"request": "Most of our meetings are huge town halls", "expect": {"room_mix": "mostly_large", "meeting_size": "largest"}}
+{"request": "People here mix Mandarin into almost every sentence", "expect": {"code_switching": "heavy"}}
+{"request": "Our meetings drag on far too long", "expect": {"length": "much_longer"}}
+{"request": "Nobody in our team ever interrupts the boss", "expect": {"interruptions": "none"}}
+{"request": "We need the meetings to be about 5 minutes long and in big rooms", "expect": {"length": "much_shorter", "room_mix": "mostly_large"}}
+{"request": "Small meetings only, 30% of them hybrid", "expect": {"room_mix": "all_small", "hybrid": "more"}}

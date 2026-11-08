@@ -27,14 +27,27 @@ from .engine import YES_NO
 from .models import as_question
 from .questions import QuestionSet, load_questions
 
-DATA_VERSION = 2  # 2: adds the terse style; version 1 rows have only descriptions and chat edits
+DATA_VERSION = 3  # 2: adds the terse style; 3: the statement style, strength cues and numbers that imply a setting
 GROUP_COUNTS = {0: 0.06, 1: 0.40, 2: 0.32, 3: 0.16, 4: 0.06}  # how many groups a request asks for directly
 RARE_GROUPS = {"stages": 0.3, "backends": 0.5}  # relative weight: power-user asks, kept rare
 P_SCOPE = 0.2  # a request with a scoped group names small or large rooms only
-P_GLOBAL = {"exact_numbers": 0.12, "out_of_scope": 0.25, "overall_difficulty": 0.07, "purpose": 0.10}
-# a first description of the dataset, a later chat message, or a few words saying what the meetings are like
-# ("echoey glass rooms", "half the people dial in"): people write the last as often as a request to change
-STYLES = {"description": 0.35, "chat_edit": 0.3, "terse": 0.35}
+P_GLOBAL = {"exact_numbers": 0.2, "out_of_scope": 0.25, "overall_difficulty": 0.07, "purpose": 0.10}
+# a first description of the dataset, a later chat message, a few words saying what the meetings are like
+# ("echoey glass rooms"), or plain statements of fact ("everyone sits at the table"): people write the last two
+# as often as a request to change
+STYLES = {"description": 0.25, "chat_edit": 0.25, "terse": 0.25, "statement": 0.25}
+# Groups whose options form a scale around `unchanged`: one step from it is a mild change, two or more a strong
+# one, and the writer is told which words fit, so "a bit noisier" and "much noisier" read differently
+SCALES = {"meeting_size", "length", "overlap", "interruptions", "backchannels", "dominance", "pace",
+          "code_switching", "presentations", "hybrid", "wall_seats", "reverb", "noise", "mic_placement"}
+MILD = "a mild change: words like a bit, slightly, a little, sometimes, often"
+STRONG = "a strong change: words like very, way more, all the time, always, nearly everyone, as many as possible"
+# A concrete number that says the option by itself, for requests with an exact number
+NUMBERS = {("meeting_size", "smaller"): "3 or 4 people", ("meeting_size", "larger"): "10 to 15 people",
+           ("meeting_size", "largest"): "20 people", ("length", "much_shorter"): "about 5 minutes",
+           ("length", "much_longer"): "an hour or more", ("room_mix", "mostly_large"): "8 in 10 meetings big",
+           ("room_mix", "mostly_small"): "8 in 10 meetings small", ("hybrid", "more"): "about half the people remote",
+           ("hybrid", "most"): "remote people in 9 of 10 meetings"}
 P_SINGLISH = 0.25
 PERSONAS = ["an HR manager", "a speech researcher", "a product manager", "a data engineer", "a call-centre lead",
             "a student on an internship", "a startup founder", "a government officer", "a QA tester",
@@ -137,10 +150,17 @@ def expected(t: Target, qs: QuestionSet) -> dict[str, str]:
 def brief(t: Target, qs: QuestionSet) -> str:
     """The user message for the writer: the items, the voice and the shape of the message."""
     items = []
+    numbered = next((k for k in t.groups.items() if k in NUMBERS), None) if t.exact_numbers else None
     for gid, oid in t.groups.items():
         g = qs.group(gid)
         what = g.gate.strip().removeprefix("Does the request ").rstrip("?")
-        items.append(f"- On this ({what}): {HINTS.get((gid, oid), g.option(oid).label)}")
+        line = f"- On this ({what}): {HINTS.get((gid, oid), g.option(oid).label)}"
+        if gid in SCALES:
+            ids = [o.id for o in g.options]
+            line += f" ({MILD if abs(ids.index(oid) - ids.index('unchanged')) == 1 else STRONG})"
+        if (gid, oid) == numbered:
+            line += f"; say it with this number: {NUMBERS[numbered]}"
+        items.append(line)
     gq = {q.id: q for q in qs.global_}
     for name in ("overall_difficulty", "purpose"):
         oid = getattr(t, name)
@@ -150,7 +170,7 @@ def brief(t: Target, qs: QuestionSet) -> str:
                          if name == "overall_difficulty" else f"- Say what the data is for: {label}")
     if t.scope != "both":
         items.append(f"- The changes above are for {SCOPE_WORDS[t.scope]}")
-    if t.exact_numbers:
+    if t.exact_numbers and numbered is None:
         items.append("- Give one exact number (minutes, a percentage, or a count) for one of the items above, "
                      "consistent with it; no other number anywhere in the message")
     if t.out_of_scope:
@@ -161,7 +181,9 @@ def brief(t: Target, qs: QuestionSet) -> str:
              "chat_edit": "a short follow-up chat message changing a plan they have already seen, a few words to "
                           "one sentence",
              "terse": "a few words (2 to 12) saying what the meetings are like, as a noun phrase or a plain "
-                      "statement, not a question and not a request to change something"}[t.style]
+                      "statement, not a question and not a request to change something",
+             "statement": "one or two plain sentences stating how things are in the meetings (how people behave, "
+                          "sit, join or sound), as facts, not as a question or a request"}[t.style]
     voice = ("in Singlish, the way a Singaporean types in a chat (lah, can, got, abit, leh, pls)" if t.singlish
              else "in plain English")
     # bundled groups stay off limits too: "harder overall" must not name an aspect, and a direct mention would

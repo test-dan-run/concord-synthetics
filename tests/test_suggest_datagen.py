@@ -54,12 +54,18 @@ def test_brief_names_every_item():
                singlish=True, persona="an HR manager")
     text = brief(t, QS)
     assert "In most meetings" in text and "A bit noisier" in text and "only the small meetings" in text
-    assert "exact number" in text and "product names" in text and "Singlish" in text and "follow-up" in text
+    assert "9 of 10 meetings" in text and "product names" in text and "Singlish" in text and "follow-up" in text
     avoid = text.split("Say nothing at all about:")[1]
     assert "people talking over each other" in avoid and "how many people attend" in avoid
     assert "background noise" not in avoid and "remote" not in avoid  # the items asked for are never off limits
     assert "Nothing about the meetings at all" in brief(Target(groups={}), QS)
     assert "not a request to change" in brief(Target(groups={"noise": "much_noisier"}, style="terse"), QS)
+    strong = brief(Target(groups={"noise": "much_noisier"}, style="statement"), QS)
+    assert "a strong change" in strong and "as facts" in strong
+    assert "a mild change" in brief(Target(groups={"noise": "a_bit_noisier"}), QS)
+    assert "change:" not in brief(Target(groups={"race": "more_malay"}), QS)  # not a scale
+    numbered = brief(Target(groups={"meeting_size": "largest"}, exact_numbers=True), QS)
+    assert "20 people" in numbered and "Give one exact number" not in numbered
 
 
 def test_generate_resumes_and_keeps_rows_stable():
