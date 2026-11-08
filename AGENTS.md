@@ -109,8 +109,9 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
   keeps every earlier speaker's split, assigns each new speaker one split for good (partners together) and is
   checked against its sidecar's counts. `speaker_pool.refs_index` points a run at a voice folder's clip manifest;
   unset, runs use the shared `nsc-part3-refs` index.
-- The platform runs one GPU service at a time (`tools/vram_check.py`), and phase C names four; check
-  `tools/vram_check.py <services>` before a real run until that is settled.
+- The platform runs one GPU service at a time, except a GPU pack listed in its `config.yaml` `gpu_packs`. Phase C's
+  four GPU services are the pack `synthetics-phase-c`, which the platform starts together with shares of the GPU;
+  phase C's GPU roles must stay exactly that pack (`tests/test_orchestrator.py` checks), or the lease is refused.
 - `status.json` locking uses `fcntl`, so the pipeline runs on Linux only (WSL here), not native Windows.
 - If `just test` says "Failed to spawn: pytest", the `.venv` was built at an older path. Run
   `uv sync --reinstall` (or `uv run python -m pytest`).

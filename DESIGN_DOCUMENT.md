@@ -481,7 +481,11 @@ Orchestration:
 - **GPU lease.** For each phase the orchestrator runs the platform's `tools/stack.py up` with the phase's services
   (it checks the VRAM budget and waits for health), runs the phase's stages over every pending meeting, then runs
   `stack.py down`. A phase with no pending meetings is never leased. `NO_EVICT=1` stops `stack.py` from stopping
-  other projects' services. In fake and replay modes there is no lease.
+  other projects' services. In fake and replay modes there is no lease. The platform runs one GPU service at a
+  time, so phases A, B, B2 and D each lease one. Phase C needs its four GPU models in one loop (synthesise, then
+  transcribe and verify every utterance), so it is the platform's GPU pack `synthetics-phase-c`: the platform
+  starts the four together, each with its minimum scaled to share the GPU (8, 7, 3 and 2 GB minimums, about 30 GB
+  together).
 - **Local weights.** Weights live in the platform's store, `$AI_ASSETS`, which every service mounts, so cold
   starts don't download and other apps can reuse the models.
 - **Decision model.** The viewer turns a user's words into settings with a compact model on the CPU (LFM2.5-350M

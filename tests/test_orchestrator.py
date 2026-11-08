@@ -163,3 +163,23 @@ def test_waves_lease_each_phase_per_wave_and_give_the_same_meetings(tmp_path):
         a, b = RunPaths(rd1).meeting(mid), RunPaths(rd2).meeting(mid)
         assert a.script.read_bytes() == b.script.read_bytes()
     assert leases_of(rd2, cfg2) == [], "a resume skips finished waves"
+
+
+def test_phase_c_gpu_services_are_exactly_the_platform_pack():
+    """The platform runs one GPU service at a time except for a listed GPU pack, so phase C's GPU services must be
+    exactly its pack (a CPU service such as the MOS scorer may join)."""
+    import yaml
+
+    from conftest import ROOT, make_cfg
+
+    platform = (ROOT / "../../platform").resolve()
+    if not (platform / "config.yaml").is_file():
+        pytest.skip("platform checkout not found")
+    pack = set(yaml.safe_load((platform / "config.yaml").read_text()).get("gpu_packs", {}).get("synthetics-phase-c", []))
+    cfg = make_cfg()
+    services = {cfg.backends.roles[r] for r in cfg.phases.phases[Phase.C].roles}
+
+    def on_gpu(name: str) -> bool:
+        return "gpu" in (yaml.safe_load((platform / "services" / f"{name}.yaml").read_text()) or {})
+
+    assert pack and {s for s in services if on_gpu(s)} == pack
