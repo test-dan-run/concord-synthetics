@@ -498,13 +498,14 @@ Orchestration:
   a choice, and stage switches and backends are only ever asked. The engine asks in two calls: the global questions
   and every group's gate first, then the scope and the choices of the groups in play. The `decision` role is a
   decision ("System One") model on the CPU, so it answers while a GPU phase holds the card, reached through the
-  platform's `decision.systemone` API (`d1-omni-600m`; `julia-1` is the other one on the platform).
+  platform's `decision.systemone` API (`laya`; `d1-omni-600m` and `julia-1` are also on the platform).
   `synthetics suggest-eval` scores a model on labelled requests (`--service` picks another one). On the 50 requests
   in `tests/data/suggest_eval.jsonl`, word matching gets 57% of the expected options right with 20 changes nobody
-  asked for. Asked zero-shot, d1-omni-600M gets 21% with 30, and Julia-1 changes almost every group, because it
-  cannot tell whether a request mentions a setting (its gate answers separate mentioned from unmentioned groups no
-  better than chance; d1's reach 0.79 AUC). The viewer therefore uses word matching unless
-  `SYNTHETICS_DECISION_SERVICE=1` is set.
+  asked for. Asked zero-shot, Laya gets 22% with 10, d1-omni-600M 21% with 30, and Julia-1 changes almost every
+  group. Laya's gates separate mentioned from unmentioned groups best (0.89 to 0.93 AUC, against 0.79 for d1 and
+  chance for Julia-1), but its yes answers mostly fall below `gate_min`, so it misses most of what a request asks
+  for; it picks the right option 52% of the time when asked directly. The viewer therefore uses word matching
+  unless `SYNTHETICS_DECISION_SERVICE=1` is set.
 - **Execution.** One meeting and one request at a time, with `status.json` deciding what is left. Correctness comes
   before speed, and the stage interfaces keep any future concurrency confined to the scheduler and the backend
   clients. The 20-meeting reference run `m9-e2e` took about 9 hours, the largest share in phase C, and `resume` makes

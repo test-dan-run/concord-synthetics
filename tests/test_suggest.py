@@ -187,5 +187,5 @@ def test_viewer_uses_word_matching_unless_the_service_is_switched_on(monkeypatch
     monkeypatch.delenv(suggest_routes.USE_SERVICE_ENV, raising=False)
     assert suggest_routes.decision_model()[1] == "fake"
     monkeypatch.setenv(suggest_routes.USE_SERVICE_ENV, "1")
-    assert suggest_routes.decision_model()[1] == "d1-omni-600m"
+    assert suggest_routes.decision_model()[1] == "laya"
     assert suggest_routes.decision_model(use_service=False)[1] == "fake"

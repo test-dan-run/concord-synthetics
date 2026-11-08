@@ -69,7 +69,7 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
   with the platform's `tools/stack.py up/down` (`orchestrator/lease.py`). Each wave finishes before the next
   starts. Execution is sequential: one meeting, one request at a time.
 - The decision role turns a user's words into settings: it only scores the options in `suggest/questions.yaml`,
-  and code applies their effects. It is a decision model on the CPU (`d1-omni-600m`, on the platform's
+  and code applies their effects. It is a decision model on the CPU (`laya`, on the platform's
   `decision.systemone` API), never leased. The viewer uses word matching and says so, unless
   `SYNTHETICS_DECISION_SERVICE=1` is set and the platform has the service: zero-shot, the decision models score
   below word matching (`just suggest-eval` scores the service, `--service <name>` another one, `--fake` the fallback).
