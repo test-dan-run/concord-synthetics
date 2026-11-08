@@ -498,19 +498,33 @@ Orchestration:
   a choice, and stage switches and backends are only ever asked. The engine asks in two calls: the global questions
   and every group's gate first, then the scope and the choices of the groups in play. The `decision` role is a
   decision ("System One") model on the CPU, so it answers while a GPU phase holds the card, reached through the
-  platform's `decision.systemone` API (`laya`; `d1-omni-600m` and `julia-1` are also on the platform).
-  `synthetics suggest-eval` scores a model on labelled requests (`--service` picks another one). On the 50 requests
-  in `tests/data/suggest_eval.jsonl`, word matching gets 57% of the expected options right with 20 changes nobody
-  asked for. Asked zero-shot, Laya gets 22% with 10, d1-omni-600M 21% with 30, and Julia-1 changes almost every
-  group. Laya's gates separate mentioned from unmentioned groups best (0.89 to 0.93 AUC, against 0.79 for d1 and
-  chance for Julia-1), but its yes answers mostly fall below `gate_min`, so it misses most of what a request asks
-  for; it picks the right option 52% of the time when asked directly. The viewer therefore uses word matching
-  unless `SYNTHETICS_DECISION_SERVICE=1` is set. Training data for a fine-tune comes from `synthetics suggest-data`
-  (`suggest/datagen.py`): labels are drawn first from `questions.yaml` with a seeded RNG (a few groups and
-  options, a room scope, the global answers), and the generator then writes one request for them, told what to
-  ask for and what to leave out. `laya_rows` turns a row into Laya's fine-tuning format with the questions asked
-  exactly as the engine asks them: every gate, the chosen groups' choices, and a few unchanged choices of other
-  groups. The rows live in `/home/user/code/datasets/synthetics-decisions/`.
+  platform's `decision.systemone` API: `laya-synthetics`, Laya (421M) fine-tuned on these questions. The viewer
+  checks the service's health first (1 s) and falls back to word matching, and says so, when it is down or fails
+  mid-request; `SYNTHETICS_DECISION_SERVICE=0` keeps word matching. `synthetics suggest-eval` scores a model on
+  labelled requests (`--service` picks another one, `--data` another file).
+
+  | On the 50 hand-written requests (`tests/data/suggest_eval.jsonl`) | Right option | Changes nobody asked for |
+  |---|---|---|
+  | Word matching | 57% | 20 |
+  | Laya, untrained | 22% | 10 |
+  | d1-omni-600M, untrained | 21% | 30 |
+  | `laya-synthetics` | 62% | 1 |
+
+  Untrained, the decision models miss most of what a request asks for (Julia-1 cannot tell whether a request
+  mentions a setting at all). The fine-tune made Laya's gates decisive (0.99 or 0.01) and its choices mostly right;
+  what it still misses is mainly strength ("more" for "much more", "often" for "always"). On the generated
+  held-out requests (`heldout-v1.jsonl`) it gets 96% right with 3 unasked changes, against 62% with 359 for word
+  matching; those requests come from the same writer as the training data, so the hand-written set is the one to
+  trust.
+
+  Training data comes from `synthetics suggest-data` (`suggest/datagen.py`): labels are drawn first from
+  `questions.yaml` with a seeded RNG (a few groups and options, a room scope, the global answers), and the
+  generator then writes one request for them, told what to ask for and what to leave out, as a first description,
+  a chat edit or a few words describing the meetings. `laya_rows` turns a row into Laya's fine-tuning format with
+  the questions asked exactly as the engine asks them: every gate, the chosen groups' choices, and a few unchanged
+  choices of other groups. The rows, the training and scoring scripts and their README live in
+  `/home/user/code/datasets/synthetics-decisions/`. A change to `questions.yaml` (a new group, option or wording)
+  needs new rows and a retrain, about 35 minutes on the GPU.
 - **Execution.** One meeting and one request at a time, with `status.json` deciding what is left. Correctness comes
   before speed, and the stage interfaces keep any future concurrency confined to the scheduler and the backend
   clients. The 20-meeting reference run `m9-e2e` took about 9 hours, the largest share in phase C, and `resume` makes

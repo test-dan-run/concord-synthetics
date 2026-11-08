@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+
+# the viewer asks a live decision service when one is up; tests always use word matching unless they opt in
+os.environ["SYNTHETICS_DECISION_SERVICE"] = "0"
 
 from synthetics.config import load_run_config
 from synthetics.config.schema import RunConfig

@@ -70,10 +70,11 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
   with the platform's `tools/stack.py up/down` (`orchestrator/lease.py`). Each wave finishes before the next
   starts. Execution is sequential: one meeting, one request at a time.
 - The decision role turns a user's words into settings: it only scores the options in `suggest/questions.yaml`,
-  and code applies their effects. It is a decision model on the CPU (`laya`, on the platform's
-  `decision.systemone` API), never leased. The viewer uses word matching and says so, unless
-  `SYNTHETICS_DECISION_SERVICE=1` is set and the platform has the service: zero-shot, the decision models score
-  below word matching (`just suggest-eval` scores the service, `--service <name>` another one, `--fake` the fallback).
+  and code applies their effects. It is a decision model on the CPU (`laya-synthetics`, Laya fine-tuned on those
+  questions, on the platform's `decision.systemone` API), never leased. When it is down the viewer uses word
+  matching and says so; `SYNTHETICS_DECISION_SERVICE=0` forces word matching, and the tests set it. A change to
+  `questions.yaml` needs new training rows (`suggest-data`) and a retrain, or the model and the questions drift
+  apart (`just suggest-eval` scores the service, `--service <name>` another one, `--fake` the fallback).
 - Each model role maps to a service name in `config/defaults/backends.yaml`. Swapping a model is a change there.
   `backends.mode` is `aicore`, `fake`, `replay` or `record`; fake and replay never lease the GPU.
 - Every run file is a Pydantic model in `artifacts/`, written with `artifacts/io.py` (atomic write). Config

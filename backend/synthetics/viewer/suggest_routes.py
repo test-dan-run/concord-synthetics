@@ -3,18 +3,20 @@
 A request ("mostly big boardroom meetings, noisy, lots of interrupting") goes to the decision model, which answers
 the questions in `suggest/questions.yaml`; confident answers come back as builder overrides merged onto the draft,
 less confident ones as offers, and risky ones as questions. Nothing is created or started: the caller previews the
-new draft like any other. With no decision service on the platform the routes fall back to the word-matching fake
-and say so (`model: "fake"`), so the flow still works in fake mode.
+new draft like any other. When the decision service is not on the platform, not up, or fails mid-request, the
+routes fall back to the word-matching fake and say so (`model: "fake"`), so the flow still works in fake mode.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from ..backends.base import BackendError
 from ..config.schema import Role
 from ..suggest.engine import Answer, apply_answers, suggest
 from ..suggest.questions import load_questions
@@ -37,12 +39,28 @@ class ApplyIn(BaseModel):
     choices: list[Choice]
 
 
-USE_SERVICE_ENV = "SYNTHETICS_DECISION_SERVICE"
+USE_SERVICE_ENV = "SYNTHETICS_DECISION_SERVICE"  # "0" keeps the viewer on word matching
+HEALTH_TIMEOUT_S = 1.0
 
 
-def decision_model(*, use_service: bool | None = None, service: str | None = None):
-    """(model, name): the `decision` role's service (or `service`) when it is switched on
-    (`SYNTHETICS_DECISION_SERVICE=1`) and the platform has it, else the fake."""
+def service_up(name: str) -> bool:
+    """The service answers its health check now. A stopped service would otherwise hold a request through the
+    transport's retries (about 30 s) before the viewer could fall back."""
+    try:
+        import aicore
+        import httpx
+
+        ep = aicore.endpoint(name)
+        url = ep["url"].rstrip("/") + ep.get("health_path", "/health")
+        return httpx.get(url, timeout=HEALTH_TIMEOUT_S).status_code == 200
+    except Exception:  # noqa: BLE001 - no endpoint map, unknown service, refused connection: all mean "not up"
+        return False
+
+
+def decision_model(*, use_service: bool | None = None, service: str | None = None,
+                   up: Callable[[str], bool] = service_up):
+    """(model, name): the `decision` role's service (or `service`) when the platform has it and it is up, else
+    the word-matching fake. `SYNTHETICS_DECISION_SERVICE=0` keeps the fake."""
     import os
 
     from ..backends.registry import Backends, check_endpoints
@@ -50,13 +68,14 @@ def decision_model(*, use_service: bool | None = None, service: str | None = Non
     from ..suggest.models import FakeDecisionModel
 
     if use_service is None:
-        use_service = os.environ.get(USE_SERVICE_ENV, "") not in ("", "0", "false")
+        use_service = os.environ.get(USE_SERVICE_ENV, "1").strip().lower() not in ("0", "false", "no", "off")
     overrides = {"run_id": "suggest", "seed": 1, "n_meetings": 1}
     if service:
         overrides["backends.roles.decision"] = service
     cfg = load_run_config(overrides=overrides).backends
-    if use_service and cfg.mode != "fake" and not check_endpoints(cfg, [Role.DECISION]):
-        return Backends(cfg, [Role.DECISION]).get(Role.DECISION), cfg.roles[Role.DECISION]
+    name = cfg.roles[Role.DECISION]
+    if use_service and cfg.mode != "fake" and not check_endpoints(cfg, [Role.DECISION]) and up(name):
+        return Backends(cfg, [Role.DECISION]).get(Role.DECISION), name
     return FakeDecisionModel(), "fake"
 
 
@@ -96,7 +115,13 @@ def add_routes(app: FastAPI, *, model_factory=decision_model) -> None:
     def post_suggest(body: SuggestIn) -> dict:
         cfg, _ = build_config(body.draft)
         model, name = model_factory()
-        s = suggest(model, body.request, cfg.model_dump(mode="json"))
+        try:
+            s = suggest(model, body.request, cfg.model_dump(mode="json"))
+        except BackendError:  # the service went away mid-request: answer with word matching, and say so
+            from ..suggest.models import FakeDecisionModel
+
+            model, name = FakeDecisionModel(), "fake"
+            s = suggest(model, body.request, cfg.model_dump(mode="json"))
         qs = load_questions()
         notes = {gq.id: gq.on_yes for gq in qs.global_ if gq.on_yes}
         return {**s.as_dict(), "notes": [{"id": n, "text": notes.get(n, "")} for n in s.notes],

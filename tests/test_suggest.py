@@ -179,13 +179,32 @@ def test_topic_suggestions_come_from_the_bank_and_skip_the_users_list(tmp_path):
     assert mine not in {t["topic"] for t in again}
 
 
-def test_viewer_uses_word_matching_unless_the_service_is_switched_on(monkeypatch):
+def test_viewer_uses_the_service_when_it_is_up_else_word_matching(monkeypatch):
     from synthetics.backends import registry
     from synthetics.viewer import suggest_routes
 
     monkeypatch.setattr(registry, "check_endpoints", lambda cfg, roles: [])
     monkeypatch.delenv(suggest_routes.USE_SERVICE_ENV, raising=False)
-    assert suggest_routes.decision_model()[1] == "fake"
-    monkeypatch.setenv(suggest_routes.USE_SERVICE_ENV, "1")
-    assert suggest_routes.decision_model()[1] == "laya"
-    assert suggest_routes.decision_model(use_service=False)[1] == "fake"
+    assert suggest_routes.decision_model(up=lambda name: True)[1] == "laya-synthetics"
+    assert suggest_routes.decision_model(up=lambda name: False)[1] == "fake"  # registered but stopped
+    monkeypatch.setenv(suggest_routes.USE_SERVICE_ENV, "0")
+    assert suggest_routes.decision_model(up=lambda name: True)[1] == "fake"
+    assert suggest_routes.decision_model(use_service=True, service="julia-1", up=lambda name: True)[1] == "julia-1"
+
+
+def test_suggest_falls_back_to_word_matching_when_the_service_fails(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from synthetics.backends.base import BackendError
+    from synthetics.viewer.suggest_routes import add_routes
+
+    class Broken:
+        def choose_many(self, request, items):
+            raise BackendError("laya-synthetics: ConnectError")
+
+    app = FastAPI()
+    add_routes(app, model_factory=lambda: (Broken(), "laya-synthetics"))
+    r = TestClient(app).post("/api/suggest", json={"request": "noisy rooms with aircon noise"})
+    assert r.status_code == 200 and r.json()["model"] == "fake"
+    assert "noise" in {a["group"] for a in r.json()["applied"]} | {o["group"] for o in r.json()["offers"]}
