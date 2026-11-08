@@ -29,6 +29,14 @@ class DecisionModel(Protocol):
         """A probability per option, in order, summing to 1."""
 
 
+def ask(model: DecisionModel, request: str, items: list[tuple[str, str, list[str]]]) -> dict[str, list[float]]:
+    """Several questions at once: in one call when the model takes a batch (`choose_many`), else one by one."""
+    many = getattr(model, "choose_many", None)
+    if many is not None:
+        return many(request, items)
+    return {key: model.choose(request, question, options) for key, question, options in items}
+
+
 @dataclass
 class Answer:
     group: str
@@ -65,11 +73,9 @@ def _top(probs: list[float]) -> list[int]:
     return sorted(range(len(probs)), key=lambda i: -probs[i])
 
 
-def _scope(model: DecisionModel, qs: QuestionSet, request: str) -> str:
-    opts = qs.scope.options
-    probs = model.choose(request, qs.scope.question, [o.label for o in opts])
+def _scope(qs: QuestionSet, probs: list[float]) -> str:
     best = _top(probs)[0]
-    return opts[best].id if probs[best] >= qs.policy.offer_min else qs.scope.default
+    return qs.scope.options[best].id if probs[best] >= qs.policy.offer_min else qs.scope.default
 
 
 def _offer(g: Group, probs: list[float], scope: str, n: int = 2) -> Offer:
@@ -79,34 +85,44 @@ def _offer(g: Group, probs: list[float], scope: str, n: int = 2) -> Offer:
 
 
 def answer_groups(model: DecisionModel, request: str, qs: QuestionSet | None = None) -> Suggestion:
-    """Ask every question for `request`; no changes are computed yet (see `suggest`)."""
+    """Ask every question for `request`; no changes are computed yet (see `suggest`).
+
+    Two rounds: the global questions and every group's gate together, then the scope and the choice questions of
+    the groups that are in play."""
     qs = qs or load_questions()
     p = qs.policy
     s = Suggestion()
+    first = [(f"global:{gq.id}", gq.question, YES_NO if gq.options is None else [o.label for o in gq.options])
+             for gq in qs.global_]
+    first += [(f"gate:{g.id}", g.gate, YES_NO) for g in qs.groups]
+    got = ask(model, request, first)
+
     bundles: dict[str, tuple[str, float, str]] = {}  # group -> (option, prob, global id)
     for gq in qs.global_:
+        probs = got[f"global:{gq.id}"]
         if gq.options is None:
-            yes = model.choose(request, gq.question, YES_NO)[0]
-            if yes >= p.gate_min:
+            if probs[0] >= p.gate_min:
                 if gq.id == "exact_numbers":
                     s.highlight_exact_numbers = True
                 if gq.on_yes:
                     s.notes.append(gq.id)
             continue
-        probs = model.choose(request, gq.question, [o.label for o in gq.options])
         best = _top(probs)[0]
         if probs[best] >= p.apply_min:
             for gid, oid in gq.options[best].bundle.items():
                 bundles.setdefault(gid, (oid, probs[best], gq.id))
 
-    for g in qs.groups:
-        gate = model.choose(request, g.gate, YES_NO)[0]
-        direct = gate >= p.gate_min
-        if not direct and g.id not in bundles:
-            continue
-        scope = _scope(model, qs, request) if g.scope else "both"
-        if direct:
-            probs = model.choose(request, g.question, [o.label for o in g.options])
+    direct = {g.id for g in qs.groups if got[f"gate:{g.id}"][0] >= p.gate_min}
+    live = [g for g in qs.groups if g.id in direct or g.id in bundles]
+    second = [(f"choice:{g.id}", g.question, [o.label for o in g.options]) for g in live if g.id in direct]
+    if any(g.scope for g in live):
+        second.append(("scope", qs.scope.question, [o.label for o in qs.scope.options]))
+    got = ask(model, request, second)
+
+    for g in live:
+        scope = _scope(qs, got["scope"]) if g.scope else "both"
+        if g.id in direct:
+            probs = got[f"choice:{g.id}"]
             best = _top(probs)[0]
             opt, prob, source = g.options[best], probs[best], "direct"
         else:

@@ -40,10 +40,9 @@ class ApplyIn(BaseModel):
 USE_SERVICE_ENV = "SYNTHETICS_DECISION_SERVICE"
 
 
-def decision_model(*, use_service: bool | None = None):
-    """(model, name): the `decision` role's service when it is switched on (`SYNTHETICS_DECISION_SERVICE=1`) and
-    the platform has it, else the fake. The switch stays off by default because LFM2.5-350M, asked zero-shot,
-    scores below the word-matching fake on `tests/data/suggest_eval.jsonl`."""
+def decision_model(*, use_service: bool | None = None, service: str | None = None):
+    """(model, name): the `decision` role's service (or `service`) when it is switched on
+    (`SYNTHETICS_DECISION_SERVICE=1`) and the platform has it, else the fake."""
     import os
 
     from ..backends.registry import Backends, check_endpoints
@@ -52,7 +51,10 @@ def decision_model(*, use_service: bool | None = None):
 
     if use_service is None:
         use_service = os.environ.get(USE_SERVICE_ENV, "") not in ("", "0", "false")
-    cfg = load_run_config(overrides={"run_id": "suggest", "seed": 1, "n_meetings": 1}).backends
+    overrides = {"run_id": "suggest", "seed": 1, "n_meetings": 1}
+    if service:
+        overrides["backends.roles.decision"] = service
+    cfg = load_run_config(overrides=overrides).backends
     if use_service and cfg.mode != "fake" and not check_endpoints(cfg, [Role.DECISION]):
         return Backends(cfg, [Role.DECISION]).get(Role.DECISION), cfg.roles[Role.DECISION]
     return FakeDecisionModel(), "fake"

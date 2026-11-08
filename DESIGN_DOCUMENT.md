@@ -492,14 +492,19 @@ Orchestration:
   together).
 - **Local weights.** Weights live in the platform's store, `$AI_ASSETS`, which every service mounts, so cold
   starts don't download and other apps can reuse the models.
-- **Decision model.** The viewer turns a user's words into settings with a compact model on the CPU (LFM2.5-350M
-  on llama.cpp, the `decision` role), so it answers while a GPU phase holds the card. It never writes a value: it
-  gives a probability for each option of the yes/no and multiple-choice questions in `suggest/questions.yaml`, and
-  code applies the chosen options' effects, clamped to the file's bounds. Confident answers apply, uncertain ones
-  are offered as a choice, and stage switches and backends are only ever asked. `synthetics suggest-eval` scores a
-  model on labelled requests. Asked zero-shot, LFM2.5-350M Q8_0 gets 5% of the expected options right and changes
-  many groups the request never mentions, while the word-matching fake gets 57%. The viewer therefore uses the fake
-  unless `SYNTHETICS_DECISION_SERVICE=1` is set.
+- **Decision model.** The viewer turns a user's words into settings by answering the yes/no and multiple-choice
+  questions in `suggest/questions.yaml`. It never writes a value: each option gets a probability, and code applies
+  the chosen options' effects, clamped to the file's bounds. Confident answers apply, uncertain ones are offered as
+  a choice, and stage switches and backends are only ever asked. The engine asks in two calls: the global questions
+  and every group's gate first, then the scope and the choices of the groups in play. The `decision` role is a
+  decision ("System One") model on the CPU, so it answers while a GPU phase holds the card, reached through the
+  platform's `decision.systemone` API (`d1-omni-600m`; `julia-1` is the other one on the platform).
+  `synthetics suggest-eval` scores a model on labelled requests (`--service` picks another one). On the 50 requests
+  in `tests/data/suggest_eval.jsonl`, word matching gets 57% of the expected options right with 20 changes nobody
+  asked for. Asked zero-shot, d1-omni-600M gets 21% with 30, and Julia-1 changes almost every group, because it
+  cannot tell whether a request mentions a setting (its gate answers separate mentioned from unmentioned groups no
+  better than chance; d1's reach 0.79 AUC). The viewer therefore uses word matching unless
+  `SYNTHETICS_DECISION_SERVICE=1` is set.
 - **Execution.** One meeting and one request at a time, with `status.json` deciding what is left. Correctness comes
   before speed, and the stage interfaces keep any future concurrency confined to the scheduler and the backend
   clients. The 20-meeting reference run `m9-e2e` took about 9 hours, the largest share in phase C, and `resume` makes

@@ -1,61 +1,54 @@
 """Decision models: something that gives a probability per option of a multiple-choice question about a request.
 
-`AicoreDecisionModel` asks the `decision` role's service (LFM2.5-350M on llama.cpp, CPU only, so it answers while
-a GPU phase holds the card) for one letter, constrained by a grammar to the option letters, and reads the letters'
-probabilities from the top logprobs. `FakeDecisionModel` matches words of the request against each question's
-wording and examples, so fake mode and the tests work with no service.
+`SystemOneDecisionModel` asks the `decision` role's service, a decision model on the CPU (so it answers while a GPU
+phase holds the card), through the platform's `decision.systemone` API: the request is the state, and every
+question goes as a yes/no (`noul`) or a `choice` among the option labels. `choose_many` sends a batch of questions
+in one call, which is how the engine asks them. `FakeDecisionModel` matches words of the request against each
+question's wording and examples, so fake mode and the tests work with no service.
 """
 
 from __future__ import annotations
 
-import math
 import re
-import string
 from typing import Any
 
 from ..backends.base import BackendError
 from ..backends.transport import Transport
 from .questions import QuestionSet, load_questions
 
-LETTERS = string.ascii_uppercase
 TIMEOUT_S = 30.0
-SYSTEM = ("You read a request for synthetic meeting recordings and answer one multiple-choice question about it. "
-          "Answer with the letter of the best option only. When the request does not say, pick the option that "
-          "means no change or no.")
-FALLBACK_P = 0.8  # the chosen letter's probability when the service returns no logprobs
+YES_NO = ["Yes", "No"]
+# Yes/no answers read better with each side described (the Julia-1 card: 80.5% against 65% with literal true/false).
+GATE_CRITERIA = {"true": "yes, the request says this", "false": "no, the request does not say this"}
+
+Item = tuple[str, str, list[str]]  # (key, question, option labels)
 
 
-def prompt(request: str, question: str, options: list[str]) -> str:
-    lines = [f"Request: {request.strip()}", f"Question: {question.strip()}", "Options:"]
-    lines += [f"{LETTERS[i]}. {o}" for i, o in enumerate(options)]
-    lines.append("Answer:")
-    return "\n".join(lines)
+def as_question(question: str, options: list[str]) -> dict[str, Any]:
+    """One decision.systemone question: a yes/no for ["Yes", "No"], else a choice keyed o0, o1, ..."""
+    if options == YES_NO:
+        return {"type": "noul", "instructions": question.strip(), "criteria": GATE_CRITERIA}
+    if not 2 <= len(options) <= 20:
+        raise ValueError(f"{len(options)} options; a question needs 2 to 20")
+    return {"type": "choice", "instructions": question.strip(),
+            "criteria": {f"o{i}": label for i, label in enumerate(options)}}
 
 
-def letter_probs(raw: dict[str, Any], n: int) -> list[float]:
-    """Probabilities of the first n letters from a chat completion with logprobs, renormalised over the letters."""
+def answer_probs(answer: dict[str, Any], options: list[str]) -> list[float]:
+    """Probabilities in option order from one decision.systemone answer."""
     try:
-        choice = raw["choices"][0]
-        text = (choice["message"].get("content") or "").strip()[:1].upper()
-        tops = (choice.get("logprobs") or {}).get("content") or []
-    except (KeyError, IndexError, TypeError):
-        raise BackendError(f"malformed decision response: {str(raw)[:300]}") from None
-    scores = [0.0] * n
-    if tops:
-        for t in tops[0].get("top_logprobs") or [{"token": tops[0].get("token"), "logprob": tops[0].get("logprob")}]:
-            tok = (t.get("token") or "").strip().upper()
-            if len(tok) == 1 and tok in LETTERS[:n] and t.get("logprob") is not None:
-                scores[LETTERS.index(tok)] += math.exp(t["logprob"])
+        if options == YES_NO:
+            yes = min(max(float(answer["noul"]), 0.0), 1.0)
+            return [yes, 1.0 - yes]
+        probs = answer["probabilities"]
+        scores = [max(float(probs.get(f"o{i}", 0.0)), 0.0) for i in range(len(options))]
+    except (KeyError, TypeError, ValueError):
+        raise BackendError(f"malformed decision answer: {str(answer)[:300]}") from None
     total = sum(scores)
-    if total <= 0:
-        if text in LETTERS[:n]:
-            rest = (1 - FALLBACK_P) / max(n - 1, 1)
-            return [FALLBACK_P if LETTERS[i] == text else rest for i in range(n)]
-        return [1 / n] * n
-    return [v / total for v in scores]
+    return [s / total for s in scores] if total > 0 else [1 / len(options)] * len(options)
 
 
-class AicoreDecisionModel:
+class SystemOneDecisionModel:
     def __init__(self, service: str, transport: Transport, *, client: Any = None):
         self.service = service
         self.transport = transport
@@ -65,27 +58,23 @@ class AicoreDecisionModel:
         if self._client is None:
             import aicore
 
-            self._client = aicore.client(self.service, timeout=TIMEOUT_S, max_retries=0)
+            self._client = aicore.client(self.service, timeout=TIMEOUT_S)
         return self._client
 
+    def choose_many(self, request: str, items: list[Item]) -> dict[str, list[float]]:
+        if not items:
+            return {}
+        questions = {key: as_question(question, options) for key, question, options in items}
+        body = {"state": request.strip(), "questions": questions}
+        answers = self.transport.call(self.service, body,
+                                      lambda: self.client().decide(body["state"], questions))
+        missing = [key for key in questions if key not in answers]
+        if missing:
+            raise BackendError(f"decision service gave no answer for {missing}")
+        return {key: answer_probs(answers[key], options) for key, _, options in items}
+
     def choose(self, request: str, question: str, options: list[str]) -> list[float]:
-        n = len(options)
-        if not 2 <= n <= len(LETTERS):
-            raise ValueError(f"{n} options; a question needs 2 to {len(LETTERS)}")
-        body = {"messages": [{"role": "system", "content": SYSTEM},
-                             {"role": "user", "content": prompt(request, question, options)}],
-                "temperature": 0.0, "max_tokens": 1, "logprobs": True, "top_logprobs": min(20, n + 5), "seed": 0}
-        # llama.cpp's server reads a GBNF grammar from the body: only an option letter can be sampled
-        extra = {"grammar": "root ::= " + " | ".join(f'"{LETTERS[i]}"' for i in range(n))}
-
-        def call() -> Any:
-            import aicore
-
-            resp = self.client().chat.completions.with_raw_response.create(
-                model=aicore.model_name(self.service), extra_body=extra, **body)
-            return resp.http_response.json()
-
-        return letter_probs(self.transport.call(self.service, {**body, **extra}, call), n)
+        return self.choose_many(request, [("q", question, options)])["q"]
 
 
 _STOP = set(["a", "an", "and", "the", "or", "of", "to", "for", "in", "on", "at", "by", "with", "as", "is", "are", "be", "does", "do", "it", "its", "this", "that", "these", "those", "request", "ask", "asks", "asking", "say", "says", "said", "mention", "mentions", "such", "about", "how", "should", "change", "changes", "more", "less", "fewer", "many", "lot", "lots", "much", "bit", "than", "same", "people", "meeting", "meetings", "speaker", "speakers", "someone", "person", "table", "room", "rooms", "run", "data", "whether", "which", "what", "when", "where", "who", "would", "like", "want", "need"])

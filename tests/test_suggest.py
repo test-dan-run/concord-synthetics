@@ -1,5 +1,5 @@
 """Decision questions to builder settings: the question file against the config, the engine's policy, the effects,
-the word-matching fake, the logprob reader and the suggest routes."""
+the word-matching fake, the System One client and the suggest routes."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from conftest import V1_POOL
 from synthetics.config.loader import load_run_config
 from synthetics.suggest.effects import apply_option, expand, get_path
 from synthetics.suggest.engine import YES_NO, Answer, apply_answers, suggest
-from synthetics.suggest.models import FakeDecisionModel, letter_probs
+from synthetics.suggest.models import FakeDecisionModel, SystemOneDecisionModel, answer_probs
 from synthetics.suggest.questions import load_questions
 
 QS = load_questions()
@@ -105,14 +105,42 @@ def test_the_fake_finds_the_obvious_groups(request_text, expected):
     assert expected <= touched
 
 
-def test_letter_probs_reads_top_logprobs_and_falls_back():
-    raw = {"choices": [{"message": {"content": "B"}, "logprobs": {"content": [{"token": "B", "logprob": -0.1,
-           "top_logprobs": [{"token": "B", "logprob": -0.1}, {"token": "A", "logprob": -2.4},
-                            {"token": "Z", "logprob": -3.0}]}]}}]}
-    p = letter_probs(raw, 3)
-    assert p[1] > 0.85 and p[2] == 0 and abs(sum(p) - 1) < 1e-9
-    p = letter_probs({"choices": [{"message": {"content": "A"}}]}, 2)
-    assert p == [0.8, pytest.approx(0.2)]
+class FakeSystemOne:
+    """Stands in for aicore's decision.systemone client: records each call, answers yes and the second option."""
+
+    def __init__(self):
+        self.calls = []
+
+    def decide(self, state, questions):
+        self.calls.append((state, questions))
+        return {k: {"type": "noul", "noul": 0.8} if q["type"] == "noul" else
+                {"type": "choice", "choice": "o1", "probabilities": {o: (0.7 if o == "o1" else 0.3 / (len(q["criteria"]) - 1))
+                                                                     for o in q["criteria"]}}
+                for k, q in questions.items()}
+
+
+def test_systemone_questions_and_answers():
+    from synthetics.backends.transport import Transport
+
+    client = FakeSystemOne()
+    m = SystemOneDecisionModel("julia-1", Transport("aicore"), client=client)
+    got = m.choose_many(" noisy rooms ", [("g", "Does it mention noise?", YES_NO), ("c", "How noisy?", ["A", "B", "C"])])
+    assert got["g"] == pytest.approx([0.8, 0.2]) and got["c"] == pytest.approx([0.15, 0.7, 0.15])
+    state, questions = client.calls[0]
+    assert state == "noisy rooms" and questions["g"]["type"] == "noul" and "criteria" in questions["g"]
+    assert questions["c"] == {"type": "choice", "instructions": "How noisy?", "criteria": {"o0": "A", "o1": "B", "o2": "C"}}
+    assert answer_probs({"probabilities": {}}, ["A", "B"]) == [0.5, 0.5]
+
+
+def test_the_engine_asks_in_two_batches():
+    client = FakeSystemOne()
+    from synthetics.backends.transport import Transport
+
+    suggest(SystemOneDecisionModel("julia-1", Transport("aicore"), client=client), "anything", defaults())
+    assert len(client.calls) == 2
+    first, second = (set(q) for _, q in client.calls)
+    assert {f"gate:{g.id}" for g in QS.groups} <= first and {f"global:{g.id}" for g in QS.global_} <= first
+    assert {f"choice:{g.id}" for g in QS.groups} | {"scope"} == second  # every gate said yes
 
 
 def test_suggest_routes(tmp_path):
@@ -159,5 +187,5 @@ def test_viewer_uses_word_matching_unless_the_service_is_switched_on(monkeypatch
     monkeypatch.delenv(suggest_routes.USE_SERVICE_ENV, raising=False)
     assert suggest_routes.decision_model()[1] == "fake"
     monkeypatch.setenv(suggest_routes.USE_SERVICE_ENV, "1")
-    assert suggest_routes.decision_model()[1] == "lfm2-5-350m"
+    assert suggest_routes.decision_model()[1] == "d1-omni-600m"
     assert suggest_routes.decision_model(use_service=False)[1] == "fake"

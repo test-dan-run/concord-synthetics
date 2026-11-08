@@ -16,4 +16,4 @@ backends:
     aligner: qwen3-forced-aligner
     enhancer: deepfilternet3
     dereverb: wpe-dereverb
-    decision: lfm2-5-350m   # CPU service; the viewer uses it only with SYNTHETICS_DECISION_SERVICE=1, else word matching
+    decision: d1-omni-600m   # CPU decision model; the viewer uses it only with SYNTHETICS_DECISION_SERVICE=1, else word matching

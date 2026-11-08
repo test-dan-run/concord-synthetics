@@ -99,9 +99,9 @@ class Backends:
         if role == Role.ALIGNER:
             return aicore_impl.AicoreAligner(service, self.transport)
         if role == Role.DECISION:
-            from ..suggest.models import AicoreDecisionModel
+            from ..suggest.models import SystemOneDecisionModel
 
-            return AicoreDecisionModel(service, self.transport)
+            return SystemOneDecisionModel(service, self.transport)
         raise BackendError(f"role {role.value!r} has no aicore client")
 
 
