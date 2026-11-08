@@ -106,9 +106,9 @@ global:
 groups:
   # ---------------------------------------------------------------- rooms and speakers
   - id: room_mix
-    gate: "Does the request ask for more small meetings or more large meetings?"
-    question: "How should the mix of small and large meetings change?"
-    examples: ["mostly small calls", "focus on big meetings", "half and half"]
+    gate: "Does the request ask for more small meetings or more large meetings, such as more big rooms or more small rooms?"
+    question: "How should the mix of small and large meetings (small and big rooms) change?"
+    examples: ["mostly small calls", "focus on big meetings", "more big rooms", "half and half"]
     options:
       - id: all_small
         label: "Only small meetings"

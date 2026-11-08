@@ -57,7 +57,7 @@ SCOPE_WORDS = {"small": "only the small meetings, not the big ones", "large": "o
 HINTS = {("splits", "training"): "mostly training data", ("splits", "evaluation"): "mostly test data",
          ("splits", "balanced"): "an even split between training, validation and test data, not mostly one of them"}
 # Everyday names of what each group is about, so the writer can be told what to leave out
-ASPECTS = {"room_mix": "the mix of small and big meetings", "meeting_size": "how many people attend",
+ASPECTS = {"room_mix": "the mix of small and big meetings or rooms", "meeting_size": "how many people attend",
            "length": "how long meetings last", "overlap": "people talking over each other",
            "interruptions": "people interrupting or cutting in", "backchannels": "short replies like mm, ok, ya",
            "dominance": "who does most of the talking", "pace": "the pace or turn length",
