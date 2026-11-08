@@ -59,6 +59,7 @@ def test_brief_names_every_item():
     assert "people talking over each other" in avoid and "how many people attend" in avoid
     assert "background noise" not in avoid and "remote" not in avoid  # the items asked for are never off limits
     assert "Nothing about the meetings at all" in brief(Target(groups={}), QS)
+    assert "not a request to change" in brief(Target(groups={"noise": "much_noisier"}, style="terse"), QS)
 
 
 def test_generate_resumes_and_keeps_rows_stable():

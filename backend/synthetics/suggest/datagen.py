@@ -27,12 +27,14 @@ from .engine import YES_NO
 from .models import as_question
 from .questions import QuestionSet, load_questions
 
-DATA_VERSION = 1
+DATA_VERSION = 2  # 2: adds the terse style; version 1 rows have only descriptions and chat edits
 GROUP_COUNTS = {0: 0.06, 1: 0.40, 2: 0.32, 3: 0.16, 4: 0.06}  # how many groups a request asks for directly
 RARE_GROUPS = {"stages": 0.3, "backends": 0.5}  # relative weight: power-user asks, kept rare
 P_SCOPE = 0.2  # a request with a scoped group names small or large rooms only
 P_GLOBAL = {"exact_numbers": 0.12, "out_of_scope": 0.25, "overall_difficulty": 0.07, "purpose": 0.10}
-STYLES = {"description": 0.6, "chat_edit": 0.4}  # a first description of the dataset, or a later chat message
+# a first description of the dataset, a later chat message, or a few words saying what the meetings are like
+# ("echoey glass rooms", "half the people dial in"): people write the last as often as a request to change
+STYLES = {"description": 0.35, "chat_edit": 0.3, "terse": 0.35}
 P_SINGLISH = 0.25
 PERSONAS = ["an HR manager", "a speech researcher", "a product manager", "a data engineer", "a call-centre lead",
             "a student on an internship", "a startup founder", "a government officer", "a QA tester",
@@ -155,8 +157,11 @@ def brief(t: Target, qs: QuestionSet) -> str:
         items.append(f"- Also {t.out_of_scope}")
     if not items:
         items.append("- Nothing about the meetings at all: a greeting, a thank-you, or a question about the tool")
-    shape = ("a first description of the dataset they want, one to three sentences" if t.style == "description"
-             else "a short follow-up chat message changing a plan they have already seen, a few words to one sentence")
+    shape = {"description": "a first description of the dataset they want, one to three sentences",
+             "chat_edit": "a short follow-up chat message changing a plan they have already seen, a few words to "
+                          "one sentence",
+             "terse": "a few words (2 to 12) saying what the meetings are like, as a noun phrase or a plain "
+                      "statement, not a question and not a request to change something"}[t.style]
     voice = ("in Singlish, the way a Singaporean types in a chat (lah, can, got, abit, leh, pls)" if t.singlish
              else "in plain English")
     # bundled groups stay off limits too: "harder overall" must not name an aspect, and a direct mention would
