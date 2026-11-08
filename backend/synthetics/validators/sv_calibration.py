@@ -1,8 +1,9 @@
 """`synthetics calibrate-sv`: per-model SV thresholds from real NSC same-speaker and different-speaker pairs.
 
-Every clean reference clip (`nsc-part3-refs/clean/`, five per pool speaker) is embedded by both SV models. Same
-pairs are all clip pairs within a speaker; different pairs are one clip per speaker against every other speaker
-(the "hard" subset shares gender and ethnicity). Per model:
+Every clean reference clip of the new-run pool's speakers (the clips `references_for` gives a new run, five per
+speaker) is embedded by both SV models, one model on the GPU at a time, since the platform starts one GPU service
+at a time. Same pairs are all clip pairs within a speaker; different pairs are one clip per speaker against every
+other speaker (the "hard" subset shares gender and ethnicity). Per model:
 
 - `sv` (clone vs its reference) = the EER threshold: a clone must score like a real same-speaker pair;
 - `sv_pair_max` (two speakers of a meeting) = the same EER threshold: a pair of clone centroids above it looks like
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from itertools import combinations
 from pathlib import Path
 
@@ -82,43 +84,57 @@ def thresholds(fits: dict[str, dict]) -> dict:
 
 
 def calibrate(refs: ReferenceIndex, embedders: dict[str, object], *, speakers: list[str] | None = None,
+              hold: Callable[[str], AbstractContextManager] | None = None,
               log: Callable[[str], None] = print) -> dict:
+    """Embed every clip with each model in turn, `hold(name)` keeping that model's service up meanwhile."""
     speakers = speakers or refs.speakers()
     clips = [c for s in speakers for c in refs.clips(s)]
-    emb: dict[str, dict[str, np.ndarray]] = {name: {} for name in embedders}
-    for i, c in enumerate(clips, 1):
-        audio = refs.voice_ref(c.pair_id).audio
-        for name, e in embedders.items():
-            emb[name][c.pair_id] = e.embed([audio])[0]
-        if i % 100 == 0 or i == len(clips):
-            log(f"embedded {i}/{len(clips)} clips")
+    emb: dict[str, dict[str, np.ndarray]] = {}
+    for name, e in embedders.items():
+        with hold(name) if hold else nullcontext():
+            emb[name] = {}
+            for i, c in enumerate(clips, 1):
+                emb[name][c.pair_id] = e.embed([refs.voice_ref(c.pair_id).audio])[0]
+                if i % 200 == 0 or i == len(clips):
+                    log(f"{name}: embedded {i}/{len(clips)} clips")
     fits = {name: fit_model(emb[name], refs, speakers) for name in embedders}
     return {"speakers": len(speakers), "clips": len(clips), "refs_index": refs.sha256, "models": fits,
             "overlay": thresholds(fits)}
 
 
 def run_calibration(*, mode: str = "aicore", out: Path | None = None, lease: bool = True,
-                    speakers: list[str] | None = None, log: Callable[[str], None] = print) -> dict:
+                    speakers: list[str] | None = None, refs: ReferenceIndex | None = None,
+                    log: Callable[[str], None] = print) -> dict:
+    """Calibrate on the speakers and clips a new run uses (its pool and `speaker_pool.refs_index`), unless
+    `speakers` or `refs` say otherwise."""
     from ..backends.registry import Backends
     from ..config.loader import load_run_config
-    from ..nsc.settings import nsc_paths
+    from ..nsc.pool import load_pool
+    from ..nsc.references import references_for
     from ..orchestrator.lease import GpuLease
-    from ..orchestrator.run import resolve
+    from ..orchestrator.run import app_path, resolve
 
     cfg = resolve(load_run_config(overrides={"run_id": "calibrate-sv", "seed": 0, "n_meetings": 0,
                                              "backends.mode": mode}))
     backends = Backends(cfg.backends, SV_ROLES)
-    services = sorted({cfg.backends.roles[r] for r in SV_ROLES})
-    refs = ReferenceIndex.load(nsc_paths())
-    with GpuLease(services, platform_dir=cfg.phases.platform_dir, no_evict=cfg.phases.no_evict,
-                  timeout_s=cfg.phases.lease_timeout_s, enabled=lease and mode in ("aicore", "record")):
-        res = calibrate(refs, {r.value: backends.get(r) for r in SV_ROLES}, speakers=speakers, log=log)
+    refs = refs or references_for(cfg)
+    if speakers is None:
+        known = set(refs.speakers())
+        speakers = sorted(s.speaker for s in load_pool(app_path(cfg.speaker_pool.path)) if s.speaker in known)
+    leasing = lease and mode in ("aicore", "record")
+
+    def hold(role: str) -> AbstractContextManager:
+        return GpuLease([cfg.backends.roles[Role(role)]], platform_dir=cfg.phases.platform_dir,
+                        no_evict=cfg.phases.no_evict, timeout_s=cfg.phases.lease_timeout_s, enabled=leasing)
+
+    res = calibrate(refs, {r.value: backends.get(r) for r in SV_ROLES}, speakers=speakers, hold=hold, log=log)
     res["services"] = {r.value: cfg.backends.roles[r] for r in SV_ROLES}
+    res["pool"] = cfg.speaker_pool.version
     if out is not None:
         from ..artifacts.io import atomic_write_text
 
         head = (f"# Written by `synthetics calibrate-sv` from {res['clips']} clean NSC clips of {res['speakers']} "
-                f"speakers ({', '.join(f'{k}: {v}' for k, v in res['services'].items())}).\n"
+                f"speakers of pool {res['pool']} ({', '.join(f'{k}: {v}' for k, v in res['services'].items())}).\n"
                 f"# EER: {', '.join(f'{m} {f['eer']:.2%}' for m, f in res['models'].items())}. "
                 f"Pass it to init-run with --config.\n")
         atomic_write_text(out, head + yaml.safe_dump(res["overlay"], sort_keys=False))

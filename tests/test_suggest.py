@@ -149,3 +149,15 @@ def test_topic_suggestions_come_from_the_bank_and_skip_the_users_list(tmp_path):
     mine = first[0]["topic"]
     again = c.get("/api/topics", params={"n": 20, "exclude": [mine]}).json()["topics"]
     assert mine not in {t["topic"] for t in again}
+
+
+def test_viewer_uses_word_matching_unless_the_service_is_switched_on(monkeypatch):
+    from synthetics.backends import registry
+    from synthetics.viewer import suggest_routes
+
+    monkeypatch.setattr(registry, "check_endpoints", lambda cfg, roles: [])
+    monkeypatch.delenv(suggest_routes.USE_SERVICE_ENV, raising=False)
+    assert suggest_routes.decision_model()[1] == "fake"
+    monkeypatch.setenv(suggest_routes.USE_SERVICE_ENV, "1")
+    assert suggest_routes.decision_model()[1] == "lfm2-5-350m"
+    assert suggest_routes.decision_model(use_service=False)[1] == "fake"

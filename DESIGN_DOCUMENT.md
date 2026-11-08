@@ -423,7 +423,11 @@ path needs activation calibration on a loaded 52 GB model, which does not fit in
 ## Voice models and thresholds
 
 The stage 4 and 5 models and thresholds come from a bake-off on 30 NSC speakers (`just bakeoff`) and an SV
-calibration on 875 clean NSC clips of 175 speakers (`just calibrate-sv`), which writes `config/sv_thresholds.yaml`.
+calibration (`just calibrate-sv`), which writes `config/sv_thresholds.yaml`. The calibration uses the clean clips
+of the pool new runs use: 2,030 clips of the 406 speakers of pool p3-406-v2. It runs one SV model on the GPU at a
+time. On that pool the equal error rate is 0.91% for WavLM and 0.27% for ReDimNet2 (1.45% and 0.44% on pairs of
+the same gender and ethnicity). Old runs keep the thresholds from the first pool's 875 clips, which differ by less
+than 0.01.
 
 - **TTS mode.** `ultimate` gives the best speaker similarity at equal ASR error and MOS. `reference` mode, without
   prompt continuation, loses about 0.1 similarity.
@@ -493,7 +497,9 @@ Orchestration:
   gives a probability for each option of the yes/no and multiple-choice questions in `suggest/questions.yaml`, and
   code applies the chosen options' effects, clamped to the file's bounds. Confident answers apply, uncertain ones
   are offered as a choice, and stage switches and backends are only ever asked. `synthetics suggest-eval` scores a
-  model on labelled requests.
+  model on labelled requests. Asked zero-shot, LFM2.5-350M Q8_0 gets 5% of the expected options right and changes
+  many groups the request never mentions, while the word-matching fake gets 57%. The viewer therefore uses the fake
+  unless `SYNTHETICS_DECISION_SERVICE=1` is set.
 - **Execution.** One meeting and one request at a time, with `status.json` deciding what is left. Correctness comes
   before speed, and the stage interfaces keep any future concurrency confined to the scheduler and the backend
   clients. The 20-meeting reference run `m9-e2e` took about 9 hours, the largest share in phase C, and `resume` makes

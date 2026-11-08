@@ -28,7 +28,10 @@ retries:
 thresholds:
   judge_pass: 3.0          # 1-5 overall (rubric_v2: 3 = usable); refit with `synthetics fit-judge-threshold`
   judge_band: 0.5          # tie-breaker when |overall - judge_pass| <= band
-  sv: {sv_wavlm: 0.5568, sv_redimnet: 0.6515}   # EER thresholds from `calibrate-sv` (config/sv_thresholds.json); equal standing
+  # SV thresholds from `calibrate-sv` on the 406 speakers of pool p3-406-v2 (config/sv_thresholds.json); equal standing
+  sv: {sv_wavlm: 0.559, sv_redimnet: 0.6515}                   # EER thresholds
+  sv_pair_max: {sv_wavlm: 0.559, sv_redimnet: 0.6515}          # the same EER thresholds, for two speakers of a meeting
+  sv_consistency_min: {sv_wavlm: 0.6803, sv_redimnet: 0.7979}  # 5th percentile of a speaker's own clip pairs
   wer_max: 0.35
   cer_max_short: 0.40
   short_utterance_words: 3

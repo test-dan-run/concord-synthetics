@@ -331,7 +331,7 @@ def suggest_eval(fake: Annotated[bool, typer.Option("--fake", help="score the wo
     from ..viewer.suggest_routes import decision_model
     from .run import app_path
 
-    model, name = (FakeDecisionModel(), "fake") if fake else decision_model()
+    model, name = (FakeDecisionModel(), "fake") if fake else decision_model(use_service=True)
     if name == "fake" and not fake:
         typer.echo("the decision service is not on the platform; pass --fake to score the fake")
         raise typer.Exit(1)

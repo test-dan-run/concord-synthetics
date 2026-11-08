@@ -296,7 +296,8 @@ class ThresholdsConfig(_M):
     mos_min: float = 1.0  # absolute MOS floor (broken audio); the speaker-relative floor below does most of the work
     mos_drop_max: float = 0.75  # stage 5: an utterance may score at most this far below its reference clip's MOS
     script_rules: ScriptRuleThresholds = ScriptRuleThresholds()
-    # stage 5; from `calibrate-sv` on 875 clean NSC clips (config/sv_thresholds.json)
+    # stage 5; the SV defaults here are the calibration on the first pool's 875 clips, which old runs keep. New runs
+    # take the pool p3-406-v2 calibration from stages.yaml (config/sv_thresholds.json).
     sv_consistency_min: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.6872, "sv_redimnet": 0.7991})
     sv_pair_max: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.5568, "sv_redimnet": 0.6515})
     # stage 8 quality gates

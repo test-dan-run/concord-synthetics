@@ -69,8 +69,9 @@ shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, ba
   with the platform's `tools/stack.py up/down` (`orchestrator/lease.py`). Each wave finishes before the next
   starts. Execution is sequential: one meeting, one request at a time.
 - The decision role turns a user's words into settings: it only scores the options in `suggest/questions.yaml`,
-  and code applies their effects. It is a CPU service, never leased; without it the viewer falls back to word
-  matching and says so.
+  and code applies their effects. It is a CPU service (`lfm2-5-350m` on the platform), never leased. The viewer
+  uses word matching and says so, unless `SYNTHETICS_DECISION_SERVICE=1` is set and the platform has the service:
+  zero-shot, the model scores below word matching (`just suggest-eval` scores the service, `--fake` the fallback).
 - Each model role maps to a service name in `config/defaults/backends.yaml`. Swapping a model is a change there.
   `backends.mode` is `aicore`, `fake`, `replay` or `record`; fake and replay never lease the GPU.
 - Every run file is a Pydantic model in `artifacts/`, written with `artifacts/io.py` (atomic write). Config
