@@ -185,24 +185,24 @@ groups:
         label: "Much less overlap"
         effects:
           - {path: "turn_taking.overlap_target.{class}", op: shift, by: -0.10}
-          - {path: turn_taking.overlap_share, op: set, value: 0.3}
+          - {path: turn_taking.overlap_share, op: shift, by: -0.2}
       - id: less
         label: "Less overlap"
         effects:
           - {path: "turn_taking.overlap_target.{class}", op: shift, by: -0.05}
-          - {path: turn_taking.overlap_share, op: set, value: 0.4}
+          - {path: turn_taking.overlap_share, op: shift, by: -0.1}
       - id: unchanged
         label: "Unchanged"
       - id: more
         label: "More overlap"
         effects:
           - {path: "turn_taking.overlap_target.{class}", op: shift, by: 0.05}
-          - {path: turn_taking.overlap_share, op: set, value: 0.6}
+          - {path: turn_taking.overlap_share, op: shift, by: 0.1}
       - id: much_more
         label: "Much more overlap"
         effects:
           - {path: "turn_taking.overlap_target.{class}", op: shift, by: 0.10}
-          - {path: turn_taking.overlap_share, op: set, value: 0.7}
+          - {path: turn_taking.overlap_share, op: shift, by: 0.2}
     note: >
       overlap_share moves with the target so stage 6 does not have to stretch overlaps far to reach it, which would
       sound less natural.

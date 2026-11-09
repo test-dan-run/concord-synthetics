@@ -212,6 +212,59 @@ def roster_lines(m: MeetingSpec) -> str:
 # ---------------------------------------------------------------- stage 3: judge
 
 JUDGE_SYSTEM = {
+    "rubric_v3": """\
+You are an expert on workplace conversation, including Singapore English, Singlish and the English spoken in other
+places, rating synthetic meeting transcripts that will train speech recognition and speaker diarisation models. Be
+a strict, calibrated rater: most synthetic transcripts have visible flaws, and a 5 should be rare.
+
+Score each criterion from 1 to 5 with these anchors:
+5 = could pass for a transcript of a real meeting among these people; 4 = natural with a few scripted moments;
+3 = clearly scripted in places but usable; 2 = mostly stilted, inconsistent or off-persona; 1 = unusable.
+
+Real meetings are messy, and messiness is not a fault. False starts, digressions, interruptions and uneven
+participation never lower a score, as long as a listener could still follow the meeting. The meeting plan fixes who
+speaks, each turn's interaction type (normal, backchannel, interruption, overlap or presentation) and each speaker's
+share of turns; do not penalise those, only how well each turn is written.
+
+- responsiveness: each turn responds to what came before it. High: answers follow questions, reactions fit what was
+  just said, and requests and action items are taken up, assigned, refused or explicitly put off. Low: a question
+  followed by an unrelated statement, agreement with a point nobody made, requests that are dropped and never
+  mentioned again. Not a fault: a question that is interrupted and comes back later, or a request dodged in a way
+  that fits the persona.
+- consistency: the facts stay the same from start to end. High: numbers, dates, names, places, decisions and who is
+  responsible for what stay the same, and any change is noticed or explained. Low: a figure, date or owner that
+  changes with no reason, a decision reversed without anyone noticing, a reference to something never said. Not a
+  fault: someone misremembering and being corrected, or people disagreeing about the facts.
+- progression: the meeting stays on its topic and moves from an opening, through discussion, to decisions or next
+  steps and a close. High: a clear opening, a discussion that builds, an ending with decisions, next steps or a
+  natural wrap-up, digressions that are short and come back. Low: the same point argued several times, the meeting
+  starting over in the middle, drifting to an unrelated subject for good, or stopping suddenly. Not a fault: ending
+  without agreement, a short tangent, or running out of time and pushing items to the next meeting.
+- language_fit: each speaker's English fits their background and first language, as their persona describes it.
+  High: particles, phrasing, word choice and code-switching fit each speaker, e.g. a Singaporean speaker uses Singlish
+  at their stated level, and code-switching happens where a speaker of those languages would switch. Low: particles in
+  places nobody would put them, every speaker using the same amount of local language whatever their background,
+  forced code-switching, or features from a variety that does not match the persona. Not a fault: little local
+  language from a speaker whose persona code-switches rarely.
+- realism: the script sounds like people talking, not people reading written sentences. High: short clauses,
+  restarts, self-corrections, fillers, repetition, trailing off, varied turn lengths, unfinished sentences. Low:
+  written prose, complete well-formed sentences from every speaker, neat summaries, restating the agenda, everyone
+  agreeing politely, turns written to explain things to the reader.
+- persona_consistency: for each speaker, the turns fit their role, seniority and verbosity; score each speaker.
+  High: a manager talks like a manager and an intern like an intern, a verbose speaker takes long turns and a quiet
+  one says little, and each keeps the same character throughout. Low: speakers acting outside their role, a quiet
+  persona dominating, speakers announcing who they are. A speaker's language is scored under language_fit, not here.
+- social_dynamics: the relationships between the people show in how they talk to each other. High: seniority shows
+  in who opens and closes, who decides, who defers and who interrupts whom, and disagreement, hedging and politeness
+  fit the relationships. Low: everyone talking as equals whatever their seniority, juniors overruling seniors with no
+  reaction, no tension at all, or tension that does not fit the people. Not a fault: a junior who pushes back
+  politely, or a senior who lets the meeting run itself, when the persona allows it.
+- overall: would you accept this transcript as training data for speech recognition and speaker diarisation? A
+  holistic judgement, not an average; a script can score 3 overall with one weak criterion if the rest is good.
+
+In the rationale (at most 200 words) first name the three weakest turns by turn id and why, then the strengths.
+Then give the scores, then feedback: concrete instructions for rewriting the script (empty if none).
+Use single quotes inside strings, never double quotes.""",
     "rubric_v2": """\
 You are an expert on Singapore workplace conversation and Singlish, rating synthetic meeting transcripts that
 will train speech recognition and diarisation models. Be a strict, calibrated rater: most synthetic transcripts
@@ -256,6 +309,14 @@ instructions for rewriting the script if it should improve (empty if nothing imp
 }
 
 JUDGE_USER = {
+    "rubric_v3": """\
+Meeting: {meeting_type}; topic: {topic}; {n} participants.
+
+Personas:
+{personas}
+
+Transcript ({shown} of {total} turns{excerpt_note}); each line is turn id, speaker, interaction type, text:
+{lines}""",
     "rubric_v2": """\
 Meeting: {meeting_type}; topic: {topic}; {n} participants.
 
@@ -275,13 +336,22 @@ Transcript ({shown} of {total} turns{excerpt_note}); each line is turn id, speak
 }
 
 
-def judge_schema() -> dict:
+# The scores a rubric asks for, besides persona_consistency (one per speaker) and overall
+JUDGE_CRITERIA = {
+    "rubric_v1": ("coherence", "singlish", "realism"),
+    "rubric_v2": ("coherence", "singlish", "realism"),
+    "rubric_v3": ("responsiveness", "consistency", "progression", "language_fit", "realism", "social_dynamics"),
+}
+
+
+def judge_schema(rubric_version: str = "rubric_v2") -> dict:
     score = {"type": "number", "minimum": 1, "maximum": 5}
+    criteria = JUDGE_CRITERIA[rubric_version]
     return {"title": "script_judgement", "type": "object", "additionalProperties": False,
-            "required": ["rationale", "coherence", "singlish", "realism", "persona_consistency", "overall", "feedback"],
+            "required": ["rationale", *criteria, "persona_consistency", "overall", "feedback"],
             "properties": {
                 "rationale": {"type": "string", "maxLength": 1600},  # ~200 words; bounds runaway answers
-                "coherence": score, "singlish": score, "realism": score,
+                **dict.fromkeys(criteria, score),
                 "persona_consistency": {"type": "array", "items": {
                     "type": "object", "additionalProperties": False, "required": ["speaker_id", "score"],
                     "properties": {"speaker_id": {"type": "string"}, "score": score}}},

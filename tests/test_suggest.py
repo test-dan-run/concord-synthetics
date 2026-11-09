@@ -51,6 +51,21 @@ def test_effects_clamp_to_bounds_and_round_integer_ranges():
     assert get_path(cfg, "acoustics.snr_db.large")["lo"] == 5.0  # scope: small only
 
 
+def test_overlap_options_move_the_share_and_the_target_the_same_way():
+    base = defaults()
+    order = ["much_less", "less", "more", "much_more"]
+    shares, targets = [], []
+    for oid in order:
+        cfg = defaults()
+        apply_option(cfg, QS.group("overlap").option(oid).effects, "both", QS, overlay=False)
+        shares.append(get_path(cfg, "turn_taking.overlap_share"))
+        targets.append(get_path(cfg, "turn_taking.overlap_target.small")["hi"])
+    share0 = get_path(base, "turn_taking.overlap_share")
+    target0 = get_path(base, "turn_taking.overlap_target.small")["hi"]
+    assert shares[0] < shares[1] < share0 < shares[2] < shares[3]
+    assert targets[0] < targets[1] < target0 < targets[2] < targets[3]
+
+
 class Scripted:
     """A model that answers yes to the listed gates and picks the listed option for those groups."""
 

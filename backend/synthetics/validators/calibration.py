@@ -49,6 +49,39 @@ meeting_id, with your name in `rater`). Score 1 (poor) to 5 (excellent):
 Raters should ideally be Singaporean, so Singlish naturalness is judged by people who speak it.
 """
 
+# Runs judged with rubric_v3 get a sheet with its criteria, so raters score what the judge scored
+RUBRIC_V3 = ["responsiveness", "consistency", "progression", "language_fit", "realism", "persona_consistency",
+             "social_dynamics", "overall"]
+README_V3 = """\
+Rating instructions (Synthetics judge calibration)
+
+Open each file in scripts/ and fill one row of sheet.csv per script (add a row per extra rater, same
+meeting_id, with your name in `rater`). Score each criterion from 1 to 5:
+5 = could pass for a transcript of a real meeting among these people; 4 = natural with a few scripted moments;
+3 = clearly scripted in places but usable; 2 = mostly stilted, inconsistent or off-persona; 1 = unusable.
+
+Real meetings are messy, and messiness is not a fault, as long as a listener could follow the meeting. The plan
+fixes who speaks, each turn's interaction type and each speaker's share of turns; rate only how each turn is written.
+
+- responsiveness: turns respond to what came before; questions, requests and action items are dealt with.
+- consistency: numbers, dates, names, decisions and who is responsible stay the same from start to end.
+- progression: the meeting stays on its topic and moves from an opening to decisions or next steps and a close.
+- language_fit: each speaker's English (particles, phrasing, code-switching) fits their background and first language.
+- realism: sounds like people talking (short clauses, restarts, fillers, trailing off), not written sentences.
+- persona_consistency: each speaker's turns fit their role, seniority and verbosity (lowest speaker's score).
+- social_dynamics: seniority and relationships show in who leads, defers, interrupts and disagrees.
+- overall: would you accept this as training data for speech recognition and speaker diarisation?
+- pass: y or n (your accept / reject decision). If empty, overall >= 3 counts as a pass.
+
+Raters should know the varieties of English the speakers use, e.g. Singaporean raters for Singlish speakers.
+"""
+
+
+def sheet_for(rubric_version: str) -> tuple[list[str], str]:
+    """(sheet columns, rating instructions) for a run judged with `rubric_version`."""
+    rubric, readme = (RUBRIC_V3, README_V3) if rubric_version == "rubric_v3" else (RUBRIC, README)
+    return SHEET_COLUMNS[:7] + rubric + ["pass", "rater", "notes"], readme
+
 
 def export_judge_set(run_dir: Path, *, n: int = 60, name: str = "judge_set_1", seed: int = 1) -> Path:
     rp = RunPaths(Path(run_dir))
@@ -81,11 +114,21 @@ def export_judge_set(run_dir: Path, *, n: int = 60, name: str = "judge_set_1", s
                 jr |= {"tiebreak_service": v.tiebreak.service, "tiebreak_overall": v.tiebreak.scores.overall}
             jr["decision"] = v.decision
         judge_rows.append(jr)
-    _write_csv(out / "sheet.csv", SHEET_COLUMNS, rows)
+    columns, readme = sheet_for(_rubric_version(rp.run_dir))
+    _write_csv(out / "sheet.csv", columns, rows)
     _write_csv(out / "judge_scores.csv", ["meeting_id", "round", "primary_service", "primary_overall",
                                           "tiebreak_service", "tiebreak_overall", "decision"], judge_rows)
-    atomic_write_text(out / "README.txt", README)
+    atomic_write_text(out / "README.txt", readme)
     return out / "sheet.csv"
+
+
+def _rubric_version(run_dir: Path) -> str:
+    from ..orchestrator.run import load_run
+
+    try:
+        return load_run(run_dir)[0].judge.rubric_version
+    except FileNotFoundError:
+        return "rubric_v2"
 
 
 def _write_csv(path: Path, cols: list[str], rows: list[dict]) -> None:

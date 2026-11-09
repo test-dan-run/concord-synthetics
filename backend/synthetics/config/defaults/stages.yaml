@@ -17,7 +17,7 @@ script:
   max_tokens: 8192
   thinking: false
 judge:
-  rubric_version: rubric_v2
+  rubric_version: rubric_v2  # rubric_v3 splits coherence and judges language fit per speaker (stages/prompts.py)
   temperature: 0.0
   max_tokens: 4096
   thinking: false

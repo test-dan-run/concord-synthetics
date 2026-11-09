@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from enum import IntEnum, StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer, model_validator
 
 from .distributions import Bernoulli, Categorical, Count, Fixed, IntUniform, LogNormal, Real, Uniform, Zipf
 
@@ -207,6 +207,10 @@ class AcousticsConfig(_M):
 # ---------------------------------------------------------------- turn-taking and dynamics
 
 
+# Questions from the floor that cut into a presenter's answer, as a constant before it became a setting
+QA_INTERRUPTION_P_V1 = 0.25
+
+
 class TurnTakingConfig(_M):
     zipf: Zipf = Zipf(exponent=1.0)
     gap: LogNormal = LogNormal(median=0.5, sigma=0.5, cap=2.5)
@@ -216,11 +220,21 @@ class TurnTakingConfig(_M):
     overlap_target: PerClass[Uniform]  # share of speech time
     interruption_rate: Uniform = Uniform(lo=0.05, hi=0.10)  # of turn changes
     interruption_cutoff: Uniform = Uniform(lo=0.3, hi=1.5)  # seconds after the interruption starts
+    qa_interruption_p: float = QA_INTERRUPTION_P_V1  # questions from the floor that cut into a presenter's answer
     backchannels_per_min: Uniform = Uniform(lo=1.0, hi=3.0)
     long_pause_p: float = 0.02
     long_pause: Uniform = Uniform(lo=1.0, hi=3.0)
     side_conversations_per_10min: PerClass[Uniform]
     side_conversation_turns: IntUniform = IntUniform(lo=2, hi=4)
+
+    @model_serializer(mode="wrap")
+    def _without_unused_additions(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # qa_interruption_p was a constant when older runs were frozen: left out while it holds that value, so their
+        # cache keys (stages 1, 2, 3 and 6 slice the whole turn_taking block) stay the same
+        data = handler(self)
+        if data.get("qa_interruption_p") == QA_INTERRUPTION_P_V1:
+            data.pop("qa_interruption_p")
+        return data
 
 
 class DynamicsConfig(_M):
@@ -284,11 +298,16 @@ class ScriptRuleThresholds(_M):
     min_words_normal: int = 2
     max_words_backchannel: int = 4
     max_unknown_tags: int = 0
+    # checks beside the judge; None leaves a check out
+    min_words_per_planned_min: float | None = None  # words in the script per planned minute of meeting
+    max_repeated_phrase_share: float | None = None  # share of turns repeating a 4-word phrase from another turn
+    max_self_introductions: int | None = None  # turns where a speaker names themself ("Karthik here")
 
 
 class ThresholdsConfig(_M):
     judge_pass: float = 3.0  # 1-5 overall; rubric_v2 anchors 3 as "usable"
     judge_band: float = 0.5  # tie-breaker within +-band of the pass mark
+    judge_criterion_floor: float | None = None  # a judge fails a script when any criterion scores at or below this
     sv: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.5568, "sv_redimnet": 0.6515})
     wer_max: float = 0.35
     cer_max_short: float = 0.40

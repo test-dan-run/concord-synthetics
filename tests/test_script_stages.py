@@ -223,3 +223,155 @@ def test_two_person_meeting_plan_passes_the_rate_rules(cfg, splits):
         for name in ("overlap-start rate", "interruption rate", "turn shares"):
             assert rules[name].passed, (m.meeting_id, m.n_speakers, name, rules[name])
     assert found >= 10
+
+
+# ---------------------------------------------------------------- rubric_v3, the criterion floor and the code checks
+
+V3 = {"judge.rubric_version": "rubric_v3"}
+V3_CRITERIA = ("responsiveness", "consistency", "progression", "language_fit", "realism", "social_dynamics")
+
+
+def test_rubric_v3_asks_for_its_criteria_and_records_only_those(tmp_path):
+    rd, cfg = fake_run(tmp_path, n=1, **V3)
+    judge = FakeChatLLM("judge-a", judge_overall=4.0)
+    PhaseScheduler(rd, cfg, backends=Backends(cfg.backends, overrides={Role.JUDGE_PRIMARY: judge})).run()
+    system = judge.calls[0]["messages"][0].content
+    assert all(f"- {c}:" in system for c in V3_CRITERIA) and "singlish:" not in system
+    raw = json.loads((rd / "meetings/m-000001/script_validation.json").read_text())
+    scores = raw["primary"]["scores"]
+    assert set(scores) == {*V3_CRITERIA, "persona_consistency", "overall"}
+    assert raw["primary"]["rubric_version"] == "rubric_v3" and raw["decision"] == "pass"
+
+
+def test_rubric_v2_results_keep_their_fields():
+    from synthetics.artifacts.models import JudgeScores
+
+    s = JudgeScores(coherence=4, singlish=3, realism=3, persona_consistency={"S01": 4}, overall=3)
+    assert list(json.loads(s.model_dump_json())) == ["coherence", "singlish", "realism", "persona_consistency",
+                                                     "overall"]
+    assert s.criteria() == {"coherence": 4, "singlish": 3, "realism": 3}
+
+
+def test_judge_schema_follows_the_rubric():
+    from synthetics.stages.prompts import judge_schema
+
+    v2, v3 = judge_schema("rubric_v2"), judge_schema("rubric_v3")
+    assert v2 == judge_schema() and "coherence" in v2["required"] and "language_fit" not in v2["properties"]
+    assert all(c in v3["required"] for c in V3_CRITERIA) and "singlish" not in v3["properties"]
+
+
+def test_criterion_floor_fails_a_low_criterion_or_speaker():
+    from synthetics.artifacts.models import JudgeScores
+    from synthetics.validators.judges import low_criteria, passes
+
+    good = {c: 4.0 for c in V3_CRITERIA}
+    s = JudgeScores(**good, persona_consistency={"S01": 4.0, "S02": 2.0}, overall=4.0)
+    assert passes(s, 3.0) and not passes(s, 3.0, 2.0)
+    assert low_criteria(s, 2.0) == ["persona S02 2.0"]
+    low = JudgeScores(**{**good, "realism": 2.0}, persona_consistency={"S01": 4.0}, overall=4.0)
+    assert low_criteria(low, 2.0) == ["realism 2.0"] and passes(low, 3.0, 1.5)
+
+
+class LowRealismOnce(FakeChatLLM):
+    """A judge that gives overall 4 but realism 2 on its first judgement."""
+
+    def chat(self, messages, **kw):
+        res = super().chat(messages, **kw)
+        if kw.get("json_schema", {}).get("title") == "script_judgement" and len(self.calls) == 1:
+            out = json.loads(res.text)
+            out["realism"] = 2.0
+            res.text = json.dumps(out)
+        return res
+
+
+def test_a_low_criterion_sends_the_script_back_with_the_scores_named(tmp_path):
+    rd, cfg = fake_run(tmp_path, n=1, **V3, **{"thresholds.judge_criterion_floor": 2.0})
+    gen = FakeChatLLM("gen")
+    judge = LowRealismOnce("judge-a", judge_overall=4.0)
+    PhaseScheduler(rd, cfg, backends=Backends(cfg.backends, overrides={Role.JUDGE_PRIMARY: judge,
+                                                                         Role.GENERATOR: gen})).run()
+    st = StatusStore(rd).get("m-000001")
+    assert st.get(StageId.SCRIPT).attempts == 2 and st.get(StageId.SCRIPT_VAL).state == "pass"
+    second = [c for c in gen.calls if c["title"] == "script_chunk"][-1]["messages"][-1].content
+    assert "These scores were too low: realism 2.0." in second
+
+
+def test_new_stage3_settings_stay_out_of_the_cache_key_while_off(tmp_path):
+    from synthetics.config.loader import canonical_json
+    from synthetics.stages.s3_script_val import ScriptValidationStage
+
+    _, off = fake_run(tmp_path / "off", n=1)
+    on = off.model_copy(update={"thresholds": off.thresholds.model_copy(update={
+        "judge_criterion_floor": 2.0,
+        "script_rules": off.thresholds.script_rules.model_copy(update={"max_self_introductions": 0})})})
+    stage = ScriptValidationStage()
+    key_off = canonical_json(stage.config_slice(off))
+    assert "judge_criterion_floor" not in key_off and "max_self_introductions" not in key_off
+    assert "words_per_planned_min" not in key_off and "repeated_phrase" not in key_off
+    key_on = json.loads(canonical_json(stage.config_slice(on)))
+    assert key_on["judge_criterion_floor"] == 2.0 and key_on["rules"]["max_self_introductions"] == 0
+
+
+def test_code_checks_run_only_when_set(tmp_path):
+    from synthetics.text.singlish import run_lexicon
+    from synthetics.validators.script_rules import check_script, repeated_phrase_share, self_introductions
+
+    rd, cfg = fake_run(tmp_path, n=1)
+    PhaseScheduler(rd, cfg).run(until=StageId.SCRIPT)
+    d = rd / "meetings/m-000001"
+    m, script = read_model(d / "meeting.json", MeetingSpec), read_model(d / "script.json", Script)
+    names = {c.name for c in check_script(script, m, cfg, run_lexicon(cfg))}
+    assert not names & {"words per planned minute", "repeated phrasing", "self-introductions"}
+
+    # a speaker who names themself, and a stock line said twice
+    first = m.people[0]
+    turns = list(script.turns)
+    i = next(k for k, t in enumerate(turns) if t.speaker_id == first.speaker_id and t.interaction == "normal")
+    own = first.persona.display_name.split()[0]
+    turns[i] = turns[i].model_copy(update={"text": f"{own} here, let me start."})
+    script = script.model_copy(update={"turns": turns})
+    assert self_introductions(script, m) == [turns[i].turn_id]
+    share, _ = repeated_phrase_share(script)
+    assert 0.0 <= share <= 1.0
+
+    on = cfg.model_copy(update={"thresholds": cfg.thresholds.model_copy(update={
+        "script_rules": cfg.thresholds.script_rules.model_copy(update={
+            "min_words_per_planned_min": 1.0, "max_repeated_phrase_share": 1.0, "max_self_introductions": 0})})})
+    checks = {c.name: c for c in check_script(script, m, on, run_lexicon(on))}
+    assert checks["words per planned minute"].passed and checks["repeated phrasing"].passed
+    assert not checks["self-introductions"].passed and checks["self-introductions"].value == 1
+
+
+def test_the_rating_sheet_follows_the_runs_rubric(tmp_path):
+    import csv
+
+    from synthetics.validators.calibration import export_judge_set
+
+    rd, cfg = fake_run(tmp_path, n=1, **V3)
+    PhaseScheduler(rd, cfg).run(until=StageId.SCRIPT_VAL)
+    sheet = export_judge_set(rd)
+    with open(sheet, newline="") as fh:
+        header = next(csv.reader(fh))
+    assert all(c in header for c in V3_CRITERIA) and "singlish" not in header
+    assert "language_fit" in (sheet.parent / "README.txt").read_text()
+
+
+def test_qa_interruptions_follow_their_setting_and_old_keys_stay(cfg, sample_meetings):
+    from synthetics.config.loader import canonical_json
+    from synthetics.config.schema import QA_INTERRUPTION_P_V1, TurnTakingConfig
+
+    tt = cfg.turn_taking
+    old = tt.model_copy(update={"qa_interruption_p": QA_INTERRUPTION_P_V1})
+    assert "qa_interruption_p" not in canonical_json(old), "frozen runs keep their cache keys"
+    assert json.loads(canonical_json(tt))["qa_interruption_p"] == tt.qa_interruption_p == 0.1
+    assert TurnTakingConfig.model_validate(json.loads(canonical_json(old))).qa_interruption_p == QA_INTERRUPTION_P_V1
+
+    with_pres = [m for m in sample_meetings if m.dynamics.presentation][:5]
+    assert with_pres
+
+    def interruptions(p):
+        t = tt.model_copy(update={"qa_interruption_p": p})
+        return sum(sum(x.interaction == "interruption" for x in build_plan(m, t, np.random.default_rng(1)).turns)
+                   for m in with_pres)
+
+    assert interruptions(0.0) < interruptions(1.0)

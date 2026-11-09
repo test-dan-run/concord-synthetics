@@ -83,7 +83,9 @@ class FakeChatLLM:
             speakers = sorted(set(re.findall(r"\b(S\d\d)\b", prompt)))
             overall = self.judge_overall_by_call.pop(0) if self.judge_overall_by_call else self.judge_overall
             out = {"rationale": "Turns stay on topic; particles and code-switching sound natural.",
-                   "coherence": overall, "singlish": overall, "realism": overall,
+                   "coherence": overall, "singlish": overall, "realism": overall,  # every rubric's criteria
+                   "responsiveness": overall, "consistency": overall, "progression": overall,
+                   "language_fit": overall, "social_dynamics": overall,
                    "persona_consistency": [{"speaker_id": s, "score": 4.0} for s in speakers],
                    "overall": overall, "feedback": "" if overall >= 3.0 else "Make the quieter speakers sound less formal."}
         else:
