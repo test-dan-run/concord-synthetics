@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from enum import IntEnum, StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer, model_validator
 
 from .distributions import Bernoulli, Categorical, Count, Fixed, IntUniform, LogNormal, Real, Uniform, Zipf
 
@@ -54,6 +54,7 @@ class Role(StrEnum):
     ALIGNER = "aligner"
     ENHANCER = "enhancer"
     DEREVERB = "dereverb"
+    DECISION = "decision"  # turns a natural-language request into builder settings (CPU, never leased)
 
 
 RoomClass = Literal["small", "large"]
@@ -206,6 +207,10 @@ class AcousticsConfig(_M):
 # ---------------------------------------------------------------- turn-taking and dynamics
 
 
+# Questions from the floor that cut into a presenter's answer, as a constant before it became a setting
+QA_INTERRUPTION_P_V1 = 0.25
+
+
 class TurnTakingConfig(_M):
     zipf: Zipf = Zipf(exponent=1.0)
     gap: LogNormal = LogNormal(median=0.5, sigma=0.5, cap=2.5)
@@ -215,11 +220,21 @@ class TurnTakingConfig(_M):
     overlap_target: PerClass[Uniform]  # share of speech time
     interruption_rate: Uniform = Uniform(lo=0.05, hi=0.10)  # of turn changes
     interruption_cutoff: Uniform = Uniform(lo=0.3, hi=1.5)  # seconds after the interruption starts
+    qa_interruption_p: float = QA_INTERRUPTION_P_V1  # questions from the floor that cut into a presenter's answer
     backchannels_per_min: Uniform = Uniform(lo=1.0, hi=3.0)
     long_pause_p: float = 0.02
     long_pause: Uniform = Uniform(lo=1.0, hi=3.0)
     side_conversations_per_10min: PerClass[Uniform]
     side_conversation_turns: IntUniform = IntUniform(lo=2, hi=4)
+
+    @model_serializer(mode="wrap")
+    def _without_unused_additions(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # qa_interruption_p was a constant when older runs were frozen: left out while it holds that value, so their
+        # cache keys (stages 1, 2, 3 and 6 slice the whole turn_taking block) stay the same
+        data = handler(self)
+        if data.get("qa_interruption_p") == QA_INTERRUPTION_P_V1:
+            data.pop("qa_interruption_p")
+        return data
 
 
 class DynamicsConfig(_M):
@@ -283,11 +298,16 @@ class ScriptRuleThresholds(_M):
     min_words_normal: int = 2
     max_words_backchannel: int = 4
     max_unknown_tags: int = 0
+    # checks beside the judge; None leaves a check out
+    min_words_per_planned_min: float | None = None  # words in the script per planned minute of meeting
+    max_repeated_phrase_share: float | None = None  # share of turns repeating a 4-word phrase from another turn
+    max_self_introductions: int | None = None  # turns where a speaker names themself ("Karthik here")
 
 
 class ThresholdsConfig(_M):
     judge_pass: float = 3.0  # 1-5 overall; rubric_v2 anchors 3 as "usable"
     judge_band: float = 0.5  # tie-breaker within +-band of the pass mark
+    judge_criterion_floor: float | None = None  # a judge fails a script when any criterion scores at or below this
     sv: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.5568, "sv_redimnet": 0.6515})
     wer_max: float = 0.35
     cer_max_short: float = 0.40
@@ -295,7 +315,8 @@ class ThresholdsConfig(_M):
     mos_min: float = 1.0  # absolute MOS floor (broken audio); the speaker-relative floor below does most of the work
     mos_drop_max: float = 0.75  # stage 5: an utterance may score at most this far below its reference clip's MOS
     script_rules: ScriptRuleThresholds = ScriptRuleThresholds()
-    # stage 5; from `calibrate-sv` on 875 clean NSC clips (config/sv_thresholds.json)
+    # stage 5; the SV defaults here are the calibration on the first pool's 875 clips, which old runs keep. New runs
+    # take the pool p3-406-v2 calibration from stages.yaml (config/sv_thresholds.json).
     sv_consistency_min: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.6872, "sv_redimnet": 0.7991})
     sv_pair_max: dict[str, float] = Field(default_factory=lambda: {"sv_wavlm": 0.5568, "sv_redimnet": 0.6515})
     # stage 8 quality gates
@@ -321,12 +342,35 @@ class PhasesConfig(_M):
     platform_dir: Path = Path("../../platform")
     no_evict: bool = False
     lease_timeout_s: int = 1800
+    # Meetings per wave: each wave goes through all eight stages before the next starts, so finished meetings can
+    # be reviewed early, at the cost of leasing every GPU phase once per wave. None: the whole run in one wave.
+    # Orchestration only: results do not depend on it, since every draw is seeded per meeting and stage.
+    wave_size: int | None = Field(None, ge=1)
+
+
+ETHNICITIES = ("CHINESE", "MALAY", "INDIAN", "OTHERS")  # as the NSC speaker sheet writes them
 
 
 class SpeakerPoolConfig(_M):
     path: Path = Path("data/nsc_part3_reference_speakers.csv")
     version: str = "p3-175-v1"
     split_mix: Categorical  # share of meetings per split
+    # Target share of speakers per ethnicity. Each seat draws an ethnicity from these weights, among the groups the
+    # meeting's split still has speakers for, then a speaker of that group; a group left out or at 0 never appears.
+    # None draws every seat evenly from the split's speakers, so the mix follows the pool.
+    ethnicity_mix: Categorical | None = None
+    # The clip manifest the run clones from (a voice folder's manifest.jsonl). None: the shared nsc-part3-refs
+    # index, as every run before grown pools used.
+    refs_index: Path | None = None
+
+    @model_validator(mode="after")
+    def _known_ethnicities(self) -> SpeakerPoolConfig:
+        if self.ethnicity_mix is not None:
+            unknown = sorted(str(k) for k in self.ethnicity_mix.weights if k not in ETHNICITIES)
+            if unknown:
+                raise ValueError(f"ethnicity_mix: unknown ethnicity {', '.join(unknown)} "
+                                 f"(use {', '.join(ETHNICITIES)})")
+        return self
 
 
 class LexiconRef(_M):
@@ -396,6 +440,10 @@ class SurfaceMaterials(_M):
 class SimulationConfig(_M):
     """Stage 7. Room and device values are sampled in stage 1 (`acoustics`); these are render settings."""
 
+    # Also write each speaker as heard at the mic (stems/<speaker_id>.wav) and the noise alone (noise.wav), mono,
+    # with the mixture's band limit and gains but no clipping or codec, so stems plus noise add up to the mixture
+    # before those two. Off reproduces runs without stems; stage 7 leaves it out of its cache key while off.
+    write_stems: bool = False
     ism_max_order: int = 3  # with ray tracing for the late tail
     ray_tracing: list[RoomClass] = Field(default_factory=lambda: ["large"])
     ism_order_cap: int = 30  # rooms without ray tracing: ISM order reaches the T20 fit range, up to this cap
@@ -450,6 +498,11 @@ class LabelsConfig(_M):
 # ---------------------------------------------------------------- the run
 
 
+class KeyTerm(_M):
+    term: str = Field(min_length=1, max_length=60)
+    say: str | None = Field(None, max_length=80)  # how it is said: "letters", or a respelling such as "sing pass"
+
+
 class RunConfig(_M):
     schema_version: Literal["1"] = "1"
     # How a run samples and caches. 1: older runs, which a frozen config without the field is.
@@ -480,6 +533,10 @@ class RunConfig(_M):
     thresholds: ThresholdsConfig = ThresholdsConfig()
     lexicon: LexiconRef = LexiconRef()
     speaker_pool: SpeakerPoolConfig
+    # Words the meetings should use (product names, acronyms, local terms). Stage 2 asks for them in the brief,
+    # and the run's lexicon makes their spelling canonical and their pronunciation a TTS hint. Empty: no change
+    # anywhere, so runs without key terms keep their cache keys.
+    key_terms: list[KeyTerm] = []
 
     def enabled(self, stage: StageId) -> bool:
         toggle = self.stages.get(stage)

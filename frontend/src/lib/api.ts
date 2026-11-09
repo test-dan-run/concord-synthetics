@@ -70,6 +70,7 @@ export interface RunInfo {
   config_hash: string;
   revision: number;
   updated: number;
+  pilot?: boolean;
 }
 
 export interface StageStatus {
@@ -226,6 +227,7 @@ export interface Draft {
   seed: number;
   overrides: Record<string, unknown>;
   yaml: string;
+  pilot?: boolean; // create `<run_id>-pilot`: the first three meetings, to listen to before the full run
 }
 
 export interface PreviewMeeting {
@@ -461,7 +463,7 @@ export function exportUrl(run: string, params: Record<string, string | number | 
 }
 
 export const useViewer = () =>
-  useQuery({ queryKey: ["viewer"], queryFn: () => get<{ read_only: boolean; runs_root: string }>("/viewer"), staleTime: Infinity });
+  useQuery({ queryKey: ["viewer"], queryFn: () => get<{ read_only: boolean; admin?: boolean; runs_root: string }>("/viewer"), staleTime: Infinity });
 
 export const useDefaults = (enabled = true) =>
   useQuery({ queryKey: ["defaults"], queryFn: () => get<Defaults>("/defaults"), staleTime: Infinity, enabled });

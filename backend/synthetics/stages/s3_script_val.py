@@ -11,27 +11,50 @@ primary judgement) is kept in script_validation.json and reused when the stage r
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer
 
 from ..artifacts.io import file_sha256, read_model, write_model
 from ..artifacts.meeting import MeetingSpec
 from ..artifacts.models import JudgeResult, Script, ScriptValidation
 from ..config.schema import JudgeConfig, Phase, Role, RunConfig, ScriptRuleThresholds, StageId, TurnTakingConfig
-from ..text.singlish import Lexicon
-from ..validators.judges import judge_script
+from ..text.singlish import run_lexicon
+from ..validators.judges import judge_script, low_criteria
 from ..validators.script_rules import check_script
 from .base import StageContext, StageResult
+
+# Settings added after runs were frozen, with the default that reproduces those runs: the cache key leaves a setting
+# out while it holds that default, so older runs' stage 3 stays a cache hit
+ADDED_SETTINGS: tuple[tuple[tuple[str, ...], object], ...] = (
+    (("judge_criterion_floor",), None),
+    (("rules", "min_words_per_planned_min"), None),
+    (("rules", "max_repeated_phrase_share"), None),
+    (("rules", "max_self_introductions"), None),
+)
 
 
 class Stage3Config(BaseModel):
     judge: JudgeConfig
     judge_pass: float
     judge_band: float
+    judge_criterion_floor: float | None = None
     rules: ScriptRuleThresholds
     turn_taking: TurnTakingConfig
     lexicon_version: str
     primary: str
     tiebreak: str
+
+    @model_serializer(mode="wrap")
+    def _without_unused_additions(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+        for path, default in ADDED_SETTINGS:
+            node = data
+            for k in path[:-1]:
+                node = node[k]
+            if node.get(path[-1], default) == default:
+                node.pop(path[-1], None)
+        return data
 
 
 class ScriptValidationStage:
@@ -45,8 +68,9 @@ class ScriptValidationStage:
 
     def config_slice(self, cfg: RunConfig) -> BaseModel:
         return Stage3Config(judge=cfg.judge, judge_pass=cfg.thresholds.judge_pass, judge_band=cfg.thresholds.judge_band,
+                            judge_criterion_floor=cfg.thresholds.judge_criterion_floor,
                             rules=cfg.thresholds.script_rules, turn_taking=cfg.turn_taking,
-                            lexicon_version=Lexicon.load(cfg.lexicon.path).version,
+                            lexicon_version=run_lexicon(cfg).version,
                             primary=cfg.backends.roles.get(Role.JUDGE_PRIMARY, ""),
                             tiebreak=cfg.backends.roles.get(Role.JUDGE_TIEBREAK, ""))
 
@@ -56,7 +80,7 @@ class ScriptValidationStage:
         script = read_model(ctx.paths.script, Script)
         sha = file_sha256(ctx.paths.script)
         rnd = script.generator.round
-        lex = Lexicon.load(cfg.lexicon.path)
+        lex = run_lexicon(cfg)
 
         prev = None
         if ctx.paths.script_validation.is_file():
@@ -82,7 +106,8 @@ class ScriptValidationStage:
                 write_model(ctx.paths.script_validation, ScriptValidation(**base, decision="pending"))
                 return StageResult(state="defer", detail="rules ok · awaiting primary judge", metrics={"round": rnd})
             primary = judge_script(ctx.backends.get(Role.JUDGE_PRIMARY), Role.JUDGE_PRIMARY.value, m, script, cfg.judge,
-                                   seed=ctx.seed, pass_mark=th.judge_pass)
+                                   seed=ctx.seed, pass_mark=th.judge_pass,
+                                   criterion_floor=th.judge_criterion_floor)
         borderline = abs(primary.scores.overall - th.judge_pass) <= th.judge_band
         tiebreak: JudgeResult | None = prev.tiebreak if prev else None
         if borderline and tiebreak is None:
@@ -92,7 +117,8 @@ class ScriptValidationStage:
                 return StageResult(state="defer", detail=f"judge {primary.scores.overall:.1f} · awaiting tie-break",
                                    metrics={"round": rnd, "judge_overall": primary.scores.overall})
             tiebreak = judge_script(ctx.backends.get(Role.JUDGE_TIEBREAK), Role.JUDGE_TIEBREAK.value, m, script,
-                                    cfg.judge, seed=ctx.seed + 1, pass_mark=th.judge_pass)
+                                    cfg.judge, seed=ctx.seed + 1, pass_mark=th.judge_pass,
+                                    criterion_floor=th.judge_criterion_floor)
 
         if borderline:
             assert tiebreak is not None
@@ -102,7 +128,12 @@ class ScriptValidationStage:
         feedback = None
         if not passed:
             parts = [primary.feedback] + ([tiebreak.feedback] if tiebreak and not tiebreak.passed else [])
-            feedback = "\n".join(p for p in parts if p) or "Make the conversation sound more natural and Singaporean."
+            if th.judge_criterion_floor is not None:
+                low = low_criteria(primary.scores, th.judge_criterion_floor)
+                parts.append(f"These scores were too low: {', '.join(low)}." if low else "")
+            fallback = ("Make the conversation sound more natural." if cfg.judge.rubric_version == "rubric_v3"
+                        else "Make the conversation sound more natural and Singaporean.")
+            feedback = "\n".join(p for p in parts if p) or fallback
         write_model(ctx.paths.script_validation, ScriptValidation(
             **base, primary=primary, tiebreak=tiebreak if borderline else None, borderline=borderline,
             decision="pass" if passed else "fail", feedback=feedback))

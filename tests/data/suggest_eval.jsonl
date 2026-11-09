@@ -1,0 +1,50 @@
+{"request": "Mostly big boardroom meetings with 10 to 15 people", "expect": {"room_mix": "mostly_large", "meeting_size": "larger"}}
+{"request": "Only small calls of two or three people around a laptop", "expect": {"room_mix": "all_small", "meeting_size": "smaller"}}
+{"request": "About half small rooms and half large rooms", "expect": {"room_mix": "balanced"}}
+{"request": "Lots of 20-person meetings", "expect": {"meeting_size": "largest"}}
+{"request": "Short meetings please, around five minutes", "expect": {"length": "much_shorter"}}
+{"request": "Make the meetings a little longer", "expect": {"length": "longer"}}
+{"request": "Long all-hands that go on for ages", "expect": {"length": "much_longer"}}
+{"request": "People talking over each other all the time", "expect": {"overlap": "much_more"}}
+{"request": "A bit more crosstalk than now", "expect": {"overlap": "more"}}
+{"request": "Clean turn-taking, nobody overlaps", "expect": {"overlap": "much_less"}}
+{"request": "A heated meeting with lots of interrupting", "expect": {"interruptions": "many_more"}}
+{"request": "Polite meetings where nobody cuts in", "expect": {"interruptions": "none"}}
+{"request": "Listeners say mm and okay a lot", "expect": {"backchannels": "more"}}
+{"request": "The listeners stay quiet, no mm-hmms", "expect": {"backchannels": "fewer"}}
+{"request": "One boss does all the talking and the rest are silent", "expect": {"dominance": "strongly_dominated"}}
+{"request": "Everyone contributes about equally", "expect": {"dominance": "equal"}}
+{"request": "A senior chair dominates and the juniors rarely speak", "expect": {"dominance": "dominated"}}
+{"request": "Rapid back and forth with short turns", "expect": {"pace": "much_faster"}}
+{"request": "Slow, deliberate discussion with long turns", "expect": {"pace": "much_slower"}}
+{"request": "Heavy Singlish with plenty of Mandarin mixed in", "expect": {"code_switching": "heavy"}}
+{"request": "Mostly standard English, very little mixing", "expect": {"code_switching": "little"}}
+{"request": "Lots of slide-deck reviews with someone presenting", "expect": {"presentations": "most"}}
+{"request": "No presentations at all", "expect": {"presentations": "none"}}
+{"request": "Half the people dial in from home", "expect": {"hybrid": "more"}}
+{"request": "Everyone is in the room, nobody remote", "expect": {"hybrid": "none"}}
+{"request": "Zoom-style hybrid meetings in most cases", "expect": {"hybrid": "most"}}
+{"request": "Some people sit at the back along the wall", "expect": {"wall_seats": "often"}}
+{"request": "Everyone sits at the table", "expect": {"wall_seats": "never"}}
+{"request": "The boss always sits at the head of the table", "expect": {"chair_position": "always_head"}}
+{"request": "Echoey glass meeting rooms", "expect": {"reverb": "more_echo"}}
+{"request": "Dead, carpeted, well-treated rooms", "expect": {"reverb": "much_drier"}}
+{"request": "Noisy rooms with loud aircon", "expect": {"noise": "much_noisier"}}
+{"request": "A bit of background noise", "expect": {"noise": "a_bit_noisier"}}
+{"request": "Very clean audio", "expect": {"noise": "much_cleaner"}}
+{"request": "Put the mic in front of the chairperson", "expect": {"mic_placement": "always_chair"}}
+{"request": "We need multichannel array audio", "expect": {"mic_array": "always"}}
+{"request": "Single mic only, no arrays", "expect": {"mic_array": "never"}}
+{"request": "Recorded over Teams on cheap laptops", "expect": {"device": "call_apps"}}
+{"request": "Studio quality devices, no compression", "expect": {"device": "clean_devices"}}
+{"request": "Phone-quality audio with distortion", "expect": {"device": "poor_devices"}}
+{"request": "More Malay speakers", "expect": {"race": "more_malay"}}
+{"request": "An even mix of Chinese, Malay and Indian voices", "expect": {"race": "balanced"}}
+{"request": "Mostly Chinese voices", "expect": {"race": "more_chinese"}}
+{"request": "This is training data", "expect": {"splits": "training"}}
+{"request": "We want a held-out test set", "expect": {"splits": "evaluation"}}
+{"request": "Just a dry run without the models", "expect": {"backends": "fake"}}
+{"request": "Mostly big meetings, half of them hybrid, lots of interrupting and noisy rooms", "expect": {"room_mix": "mostly_large", "hybrid": "more", "interruptions": "many_more", "noise": "much_noisier"}}
+{"request": "Small design reviews with three or four people, quick and chatty, lots of overlap", "expect": {"room_mix": "mostly_small", "meeting_size": "smaller", "pace": "faster", "overlap": "more"}}
+{"request": "Weekly team meetings, the chair keeps it moving, juniors barely speak, plenty of Singlish", "expect": {"dominance": "dominated", "code_switching": "more"}}
+{"request": "Realistic meetings about the HR system rollout", "expect": {}}

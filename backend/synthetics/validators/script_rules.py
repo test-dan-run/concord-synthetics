@@ -95,4 +95,53 @@ def check_script(script: Script, m: MeetingSpec, cfg: RunConfig, lex: Lexicon) -
                 and (seg is None or t.speaker_id not in seg.presenters)]
     checks.append(RuleCheck(name="presentation by presenters", passed=not bad_pres, value=len(bad_pres), limit=0,
                             detail=", ".join(bad_pres[:5])))
+
+    # checks beside the judge, each on only when its limit is set
+    if th.min_words_per_planned_min is not None:
+        words = sum(len(t.text_norm.split()) for t in turns)
+        per_min = words / max(m.dynamics.duration_min, 1e-6)
+        checks.append(RuleCheck(name="words per planned minute", passed=per_min >= th.min_words_per_planned_min,
+                                value=round(per_min, 1), limit=th.min_words_per_planned_min,
+                                detail=f"{words} words for {m.dynamics.duration_min:.1f} planned minutes"))
+    if th.max_repeated_phrase_share is not None:
+        share, examples = repeated_phrase_share(script)
+        checks.append(RuleCheck(name="repeated phrasing", passed=share <= th.max_repeated_phrase_share,
+                                value=round(share, 4), limit=th.max_repeated_phrase_share,
+                                detail="; ".join(f"'{p}'" for p in examples[:3])))
+    if th.max_self_introductions is not None:
+        named = self_introductions(script, m)
+        checks.append(RuleCheck(name="self-introductions", passed=len(named) <= th.max_self_introductions,
+                                value=len(named), limit=th.max_self_introductions, detail=", ".join(named[:5])))
     return checks
+
+
+PHRASE_WORDS = 4
+
+
+def repeated_phrase_share(script: Script) -> tuple[float, list[str]]:
+    """Share of turns (of at least PHRASE_WORDS words) that share a phrase of PHRASE_WORDS words with another turn,
+    and the most repeated phrases. A writer that falls back on stock lines repeats them across a meeting."""
+    grams = []
+    for t in script.turns:
+        w = t.text_norm.split()
+        grams.append({" ".join(w[i:i + PHRASE_WORDS]) for i in range(len(w) - PHRASE_WORDS + 1)})
+    turns_with = Counter(g for gs in grams for g in gs)
+    long = [gs for gs in grams if gs]
+    repeated = sum(any(turns_with[g] > 1 for g in gs) for gs in long)
+    top = [g for g, n in turns_with.most_common(3) if n > 1]
+    return (repeated / len(long) if long else 0.0), top
+
+
+def self_introductions(script: Script, m: MeetingSpec) -> list[str]:
+    """Turns in which the speaker names themself ("Karthik here", "this is Karthik", "I'm Karthik"): people in a
+    meeting know who is talking, so a script that announces speakers is written for a reader."""
+    names = {p.speaker_id: p.persona.display_name.split()[0].lower() for p in m.people if p.persona.display_name}
+    out = []
+    for t in script.turns:
+        name = names.get(t.speaker_id)
+        if not name:
+            continue
+        n = re.escape(name)
+        if re.search(rf"\b{n}\s+here\b|\bthis is {n}\b|\bi'?m {n}\b|\bi am {n}\b|\bmy name is {n}\b", t.text.lower()):
+            out.append(t.turn_id)
+    return out

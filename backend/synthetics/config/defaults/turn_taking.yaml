@@ -1,18 +1,23 @@
-# Stages 1, 2 (turn plan) and 6. Design doc "Turn-taking".
+# Stages 1, 2 (turn plan) and 6. specs/ARCHITECTURE.md, "Turn-taking".
 turn_taking:
   zipf: {dist: zipf, exponent: 1.0}                # the chair takes the top share
   gap: {dist: lognormal, median: 0.5, sigma: 0.5, cap: 2.5}
   # Shorter gaps (half under 0.3 s at a speaker change) make the next speaker sound too quick. Gaps add no voiced
   # or overlapped time, so they do not change the overlap share or the stage 6 stretching.
-  # Half of the transitions overlap by 0.3-2.0 s, which on its own realises about 12-15% overlap, so stage 6
-  # stretches leads about 2 times on average and converts about 3% of normal transitions to reach the target.
-  overlap_share: 0.5                               # of transitions; the other half use `gap`
+  # With half of the speaker changes overlapped, meetings sound like people talking over each other all the time.
+  # A third of them, overlapping by 0.3-2.0 s, reach the targets below with stage 6 stretching leads about 2 times
+  # on average and turning about 4% of normal speaker changes into overlaps. The share and the targets move
+  # together: a lower share alone only makes stage 6 add the missing overlap to unplanned speaker changes.
+  overlap_share: 0.35                              # of transitions; the rest use `gap`
   overlap_lead: {dist: uniform, lo: 0.3, hi: 2.0}
   overlap_max_frac: 0.5
   overlap_target:
-    small: {dist: uniform, lo: 0.10, hi: 0.20}
-    large: {dist: uniform, lo: 0.15, hi: 0.25}
-  interruption_rate: {dist: uniform, lo: 0.05, hi: 0.10}
+    small: {dist: uniform, lo: 0.08, hi: 0.15}
+    large: {dist: uniform, lo: 0.12, hi: 0.20}
+  # At 5-10% of turn changes, scripts read as people cutting each other off all the time, and the judge kept
+  # naming interruptions as the least natural turns
+  interruption_rate: {dist: uniform, lo: 0.02, hi: 0.05}
+  qa_interruption_p: 0.1                           # questions after a presentation that cut into the answer
   interruption_cutoff: {dist: uniform, lo: 0.3, hi: 1.5}
   backchannels_per_min: {dist: uniform, lo: 1.0, hi: 3.0}
   long_pause_p: 0.02

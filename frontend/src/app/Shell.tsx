@@ -61,7 +61,7 @@ function RunSelect({ run }: { run: string }) {
   const { data } = useRuns();
   const nav = useNavigate();
   const loc = useLocation();
-  const section = ["distributions", "pipeline"].find((x) => loc.pathname.includes(`/${x}`)) ?? "meetings";
+  const section = ["distributions", "pipeline", "review", "export"].find((x) => loc.pathname.includes(`/${x}`)) ?? "meetings";
   return (
     <label className="flex flex-col gap-1.5 px-2.5 text-xs text-muted">
       Active run
@@ -120,16 +120,28 @@ export function Shell() {
             </button>
           </div>
           <div id="nav-groups" className={cx("flex-col gap-6 flex-1", open ? "flex" : "hidden lg:flex")}>
+            {viewer.data && !viewer.data.read_only && (
+              <Group title="Make a dataset">
+                <Item to="/create">Describe and plan</Item>
+                {run && <Item to={`${base}/review`}>Review meetings</Item>}
+                {run && <Item to={`${base}/export`}>Export</Item>}
+              </Group>
+            )}
             {run && (
-              <Group title="Room viewer">
+              <Group title="Details">
                 <Item to={`${base}/meetings`}>Meetings</Item>
                 <Item to={`${base}/distributions`}>Distributions</Item>
+                {viewer.data && !viewer.data.read_only && <Item to={`${base}/pipeline`}>Pipeline</Item>}
               </Group>
             )}
             {viewer.data && !viewer.data.read_only && (
-              <Group title="Generate">
-                <Item to="/new">New dataset</Item>
-                {run && <Item to={`${base}/pipeline`}>Pipeline</Item>}
+              <Group title="Advanced">
+                <Item to="/new">Settings form</Item>
+              </Group>
+            )}
+            {viewer.data?.admin && (
+              <Group title="Admin">
+                <Item to="/admin/speakers">Speaker pool</Item>
               </Group>
             )}
             <Group title="Run">

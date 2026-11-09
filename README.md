@@ -1,82 +1,123 @@
 # Synthetics
 
-Synthetic Singapore meeting audio with full labels. Start with `AGENTS.md` for the layout, commands and rules.
-See `DESIGN_DOCUMENT.md` for the pipeline, `UI_DESIGN_DOCUMENT.md` for the viewer and `docs/OUTPUT_CONTRACT.md`
-for the files a run hands over.
+Synthetics generates synthetic recordings of Singapore meetings with 2 to 20 speakers, labelled with who spoke when
+and when each word was said, so that a separate fine-tuning application can train transcription and diarisation
+models on them.
 
-## Setup
+The voices are cloned from the National Speech Corpus (NSC), a language model writes the conversations, and nothing
+in a recording comes from a real meeting. You can describe the meetings you want in plain English in the viewer, which
+is a web page, or you can make them with commands in a terminal.
+
+## Quick start
+
+Synthetics runs on Linux, which on Windows means inside WSL. You need Python 3.12 with
+[uv](https://docs.astral.sh/uv/), [just](https://github.com/casey/just), git, and Node.js through nvm for the
+viewer. The steps below make two practice meetings with fake models, so they need no GPU.
+
+First, clone the repo next to the AI platform, because the settings expect the platform at `../../platform`.
+
+```bash
+mkdir -p ~/code/dev/apps
+cd ~/code/dev/apps
+git clone https://github.com/test-dan-run/concord-synthetics.git
+cd concord-synthetics
+```
+
+Second, install the Python and web packages.
 
 ```bash
 uv sync
-cp .env.example .env        # SYNTHETICS_RUNS, PLATFORM_DIR, NSC_DIR, NSC_REFS_DIR, SOUND_LIBRARY_DIR, AI_HOST, NO_EVICT
-just test                   # unit tests, no GPU or platform needed
+just viewer-setup
 ```
 
-Models run as platform services (`../../platform`). Synthetics never starts containers itself: each GPU
-phase is a lease through `platform/tools/stack.py up/down`.
-
-| Phase | Role | Service |
-|---|---|---|
-| A | generator | `qwen-sea-lion-v4-5-27b-it` (NVFP4A16, quantised locally) |
-| B | judge_primary | `gemma-sea-lion-v4-27b-it-nvfp4` |
-| B2 | judge_tiebreak | `apertus-sea-lion-v4-8b-it` (own sub-phase: it does not fit beside the 27B judge) |
-| C | tts, asr_primary, sv_wavlm, sv_redimnet, quality | `voxcpm2`, `qwen3-asr-1-7b`, `wavlm-sv`, `redimnet2-sv`, `utmos` |
-| D | aligner | `qwen3-forced-aligner` |
-| prep | enhancer, dereverb, ref_quality | `deepfilternet3`, `wpe-dereverb`, `dnsmos` (CPU) |
-
-## Running
+Third, copy the example settings. `.env` says where runs are written and where the platform, the NSC data and the
+sound library are, and the defaults match the paths on this machine.
 
 ```bash
-just init d-50 50 2026          # runs/d-50: config.yaml, speaker_splits.json, meeting folders
-just run d-50                   # stage 1, rounds of A, B and B2, then C, stages 6 and 7, then D
-just status d-50                # state counts per stage, rounds to pass, regeneration rate
-just stage 2 d-50 m-000001      # one stage on one meeting (services already up)
+cp .env.example .env
 ```
 
-Every command is idempotent: a stage is skipped when status.json holds a pass with the same cache key
-(stage version, config slice, input hashes), and `synthetics resume -r <run>` continues after any stop. Set
-`--set backends.mode=fake` on `init-run` for a run with fake backends and no GPU.
-
-## Room Config Viewer
-
-A web UI over `runs/` (`UI_DESIGN_DOCUMENT.md`): a meeting browser, each meeting's floor plan,
-elevation, persona prompts and speakers, and the run's sampled distributions against `config.yaml`. Under
-Generate, New dataset creates a run from a form with a live stage 1 preview, and Pipeline starts, stops and
-follows it in the background. `synthetics viewer --read-only` (or `SYNTHETICS_READ_ONLY=1`) leaves those out.
+Fourth, make a practice run of 2 meetings with fake models. It takes under a minute, and the audio is beeps instead
+of speech, but every file and label is where a real run puts it.
 
 ```bash
-just viewer-setup               # npm install in frontend/ (once)
-just viewer-build               # build frontend/dist, which the API serves
-just viewer                     # http://127.0.0.1:8610 (SYNTHETICS_PORT); reads SYNTHETICS_RUNS
-just viewer-dev                 # API with reload + Vite dev server on http://127.0.0.1:5174
+just init try-1 2 1 --set backends.mode=fake
+just run try-1
+just status try-1
 ```
 
-## Checks
+Fifth, build and start the viewer, and open http://127.0.0.1:8610 in a browser.
 
-- **Sampler.** `just sampler-report 1000` compares stage 1 rates with every configured target and exits 1 on a
-  miss. `tests/test_sampler.py` runs the same checks on 10,000 meetings, plus geometry properties and
-  byte-identical `meeting.json` for the same seed.
-- **NSC references.** `just nsc-validate`, `just nsc-extract`, `just nsc-clean` and `just nsc-report` build the
-  reference clips in `/home/user/code/datasets/nsc-part3-refs/{raw,clean}` (never in the app). Cleanup cleans the
-  12 best-ranked candidates per speaker (by length and markup) and keeps 5; `just nsc-clean --max-candidates 0`
-  cleans every candidate, about 26,000 clips and 13 hours on CPU.
-- **Judge calibration.** `just judge-set <run>` writes a rating sheet, scripts and instructions to
-  `runs/<run>/judge_sets/judge_set_1/`, and `just fit-judge <filled sheet>` fits `thresholds.judge_pass` and
-  `judge_band` into a YAML overlay for `init-run --config`.
-- **Voice models.** `just bakeoff` clones real NSC speakers and measures similarity, ASR error, MOS and
-  separability; `just calibrate-sv` fits the SV thresholds into `config/sv_thresholds.yaml`.
-- **Viewer data.** `just viewer-contract <run>` checks every field the viewer reads, on every meeting
-  (`tests/test_viewer_contract.py` runs it on a fake run, and on `runs/m9-e2e` when present).
-  `tests/test_viewer_api.py` covers every route, the whitelist and traversal attempts.
-- **Ablations and caching.** `tests/test_ablation.py` switches stages 3, 5 and 7 off and runs to the manifest;
-  `tests/test_post.py` checks that changing sampled acoustics re-runs only stages 1, 7 and 8.
-- **Viewer UI.** `just viewer-test` (vitest), then compare the screens with `assets/mockups/png/*`.
+```bash
+just viewer-build
+just viewer
+```
 
-## Licences to carry into the dataset card
+For frontend work, `just viewer-dev` runs the API with reload and the Vite dev server on http://127.0.0.1:5174.
 
-- **MERaLiON-3:** the MERaLiON Public Licence requires an acknowledgement, and the Gemma terms apply (used in
-  the bake-off only).
-- **WavLM-Large ECAPA:** CC BY-SA 3.0. It is only used to check our own audio.
-- **ESC-50 noise clips:** CC BY-NC, non-commercial only.
-- **DEMAND room-tone beds:** CC BY-SA 3.0.
-- **NSC:** the IMDA licence covers the reference voices and the non-lexical clips cut from them.
+A real run needs the platform services and a GPU with about 32 GB, and the GPU is shared, so check `nvidia-smi`
+first. Run `just init <run> <meetings> <seed>` without `--set backends.mode=fake`, then `just run <run>`, and
+continue a stopped run with `uv run synthetics resume -r <run>`. If a run stops with "catalog ... is not
+answering", put `AI_STACK_DIRECT=1` in front of the command.
+
+## Project structure
+
+Update this tree whenever you add a top-level folder, add or move a module under `backend/synthetics/` or
+`frontend/src/`, or reorganise a folder. `specs/ARCHITECTURE.md` describes each module in more detail.
+
+```
+concord-synthetics/
+  AGENTS.md                 instructions for AI coding agents: commands, boundaries and rules
+  README.md                 this file
+  Justfile                  the commands you run with `just`
+  pyproject.toml, uv.lock   Python package, pytest and ruff settings
+  .env.example              local settings to copy to .env
+  specs/
+    REQUIREMENTS.md         user stories and acceptance criteria
+    ARCHITECTURE.md         modules, data flow, output files, API and styling
+  backend/synthetics/       the Python package
+    config/                 RunConfig schema, distributions, loader, defaults/*.yaml
+    artifacts/              one Pydantic model per run file, paths, atomic writes
+    stages/                 stages 1 to 8, the stage protocol, the runner, the turn plan and prompts
+    orchestrator/           the `synthetics` CLI, scheduler, GPU lease, phase loops, reports, background runs
+    backends/               model role protocols, aicore clients, fakes, record and replay
+    validators/             script rules, LLM judges, voice checks, sampler report, calibration
+    acoustics/              room, scene, noise and device chain for stage 7
+    export/                 RTTM, transcript, manifest and export packs
+    text/                   Singlish convention, numbers, PDPA stripping
+    nsc/                    NSC speaker pools, pool growth, reference clips
+    voice/                  audio operations, sound library, stage 5 measurement cache
+    suggest/                decision questions, engine and effects (words to settings)
+    viewer/                 FastAPI routes: read, builder, suggest, export, admin, data contract
+  frontend/                 the viewer's web page (React, Vite, Tailwind)
+    src/app/                routes and the app shell
+    src/features/           one folder per screen group: guided, browser, detail, distributions, builder,
+                            pipeline, admin
+    src/components/         shared UI components
+    src/lib/                API hooks, draft state and helpers that compute derived numbers
+  tests/                    pytest suite on fake backends; helpers.py::fake_run builds a fake run
+  data/                     speaker pool CSVs (pools/ holds grown pools), pool selection and sound library scripts
+  config/                   calibrated SV thresholds (sv_thresholds.yaml)
+  assets/                   the Synthetics icon and UI mockups
+  runs/                     run folders (ignored by git)
+```
+
+## Verification commands
+
+Run these before you commit. None of them needs a GPU or the platform.
+
+```bash
+just lint                        # ruff on backend/ and tests/
+just test                        # pytest on fake backends (about 10 minutes)
+just viewer-test                 # vitest for the frontend
+(cd frontend && npm run lint)    # TypeScript type check
+just viewer-build                # type check and production build of the frontend
+```
+
+The checks below need platform services, a finished run or more time:
+
+- `just test-live` runs the tests that need running platform services.
+- `uv run synthetics viewer-contract -r <run>` checks every field the viewer reads on a finished run.
+- `just sampler-report 1000` compares stage 1's sampled rates with their targets.
+- `just suggest-eval` scores the decision model on hand-written requests, and `just suggest-eval --fake` scores the
+  word matching fallback.

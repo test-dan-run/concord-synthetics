@@ -1,7 +1,7 @@
 """Stage 6: conversation assembly (CPU). Writes timeline.json and tracks/<speaker_id>.wav.
 
 Utterances are placed on a timeline, not concatenated. Each main turn follows the floor with the transition its
-script interaction asks for (design doc "Turn-taking"):
+script interaction asks for (specs/ARCHITECTURE.md, "Turn-taking"):
 - normal / presentation: a log-normal gap, or with `long_pause_p` a long pause
 - overlap_start: the turn starts `overlap_lead` before the floor turn ends (at most `overlap_max_frac` of
   either turn)

@@ -16,8 +16,6 @@ import numpy as np
 from ..artifacts.meeting import MeetingSpec
 from ..config.schema import TurnTakingConfig
 
-QA_INTERRUPTION_P = 0.25  # questions from the floor that cut into the presenter's answer
-
 
 @dataclass(frozen=True)
 class PlannedTurn:
@@ -104,7 +102,7 @@ def build_plan(m: MeetingSpec, tt: TurnTakingConfig, rng: np.random.Generator) -
                     break
                 w = np.array([left[s] for s in cands], float)
                 q = cands[int(rng.choice(len(cands), p=w / w.sum()))]
-                qa.append(PlannedTurn(q, "interruption" if rng.random() < QA_INTERRUPTION_P else "normal"))
+                qa.append(PlannedTurn(q, "interruption" if rng.random() < tt.qa_interruption_p else "normal"))
                 left[q] -= 1
             else:  # a presenter answers, if any of them has budget left
                 ans = [p for p in presenters if left[p] > 0]

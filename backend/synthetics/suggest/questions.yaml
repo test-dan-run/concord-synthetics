@@ -1,0 +1,598 @@
+# Decision questions for turning a loose natural-language request into run builder settings.
+#
+# A decision model (Jev style: yes/no and multiple choice, each answer with a probability) never writes a value.
+# It only answers the questions below, and code turns each chosen option into a change to the draft:
+#
+#   1. Global questions, once per request.
+#   2. One yes/no gate per group: "does the request touch this?"
+#   3. For each group whose gate passes: the scope question (when the group has `scope: true`), then the group's
+#      choice question. Every choice question has an `unchanged` option, so a gate that passes by mistake changes
+#      nothing.
+#
+# Effects apply to the current draft, so they work the same when the form starts from an existing run. Every value
+# is clamped to the field's bounds (`bounds`, the same limits as frontend/src/lib/draft.ts), and the result goes
+# through the builder's normal validation and preview. Nothing is created or started.
+#
+# Effect operations, as {path, op, ...}:
+#   op: shift, by         add `by` to both ends of a uniform range
+#   op: scale, by         multiply both ends of a uniform range
+#   op: range, lo, hi     set a uniform range
+#   op: p, value          set a Bernoulli probability
+#   op: scale_p, by       multiply a Bernoulli probability
+#   op: weights, value    set categorical weights
+#   op: set, value        set a plain value, or replace a whole distribution (null unsets an optional one)
+# `{class}` in a path expands to the scope answer: small, large, or both.
+# Percent fields are stored as 0 to 1 shares, as in config.yaml.
+# Paths under `overlay:` are not form fields; they are written to the YAML overlay instead.
+
+version: 1
+
+policy:
+  gate_min: 0.6            # a group is considered only when its gate says yes at this probability or more
+  apply_min: 0.75          # the top option becomes a suggested change at this probability or more
+  offer_min: 0.35          # between offer_min and apply_min: show the top two options and let the user pick
+  confirm_always: [stages, backends]   # never applied as a suggestion; always shown as a question to the user
+  # An option with `confirm: true` is treated the same way, while the rest of its group can still be applied.
+
+scope:
+  question: "Which rooms does this change apply to?"
+  options:
+    - {id: both, label: "Small and large rooms"}
+    - {id: small, label: "Small rooms only (2 to 6 speakers, laptop mic)"}
+    - {id: large, label: "Large rooms only (7 to 20 speakers, table mic)"}
+  default: both
+
+bounds:
+  room_classes.classes.small.speakers: [2, 6]
+  room_classes.classes.large.speakers: [7, 20]
+  dynamics.duration_min.small: [1, 180]
+  dynamics.duration_min.large: [1, 180]
+  turn_taking.overlap_target.small: [0, 0.6]
+  turn_taking.overlap_target.large: [0, 0.6]
+  turn_taking.overlap_share: [0, 1]
+  turn_taking.interruption_rate: [0, 0.5]
+  turn_taking.backchannels_per_min: [0, 20]
+  turn_taking.zipf.exponent: [0, 3]
+  dynamics.turns_per_min: [1, 30]
+  acoustics.rt60.small: [0.1, 2]
+  acoustics.rt60.large: [0.1, 2]
+  acoustics.snr_db.small: [-5, 50]
+  acoustics.snr_db.large: [-5, 50]
+  "*p": [0, 1]             # every Bernoulli probability
+
+global:
+  - id: exact_numbers
+    question: "Does the request give an exact number for a setting, such as \"SNR of 5 dB\" or \"12 speakers\"?"
+    on_yes: >
+      Do not turn the number into a choice. Highlight the field it names so the user types the value, and still
+      answer the questions for the loose parts of the request.
+
+  - id: out_of_scope
+    question: >
+      Does the request ask for something these settings cannot express, such as meeting topics, emotions, accents of
+      a particular speaker, or specific words?
+    on_yes: "Tell the user which part is not a setting, and answer the questions for the rest."
+
+  - id: overall_difficulty
+    question: "Does the request ask for harder or easier data overall, without saying which aspect?"
+    options:
+      - id: harder
+        label: "Harder overall"
+        bundle: {overlap: more, interruptions: more, noise: a_bit_noisier, reverb: more_echo}
+      - id: unchanged
+        label: "Not asked"
+      - id: easier
+        label: "Easier overall"
+        bundle: {overlap: less, interruptions: fewer, noise: a_bit_cleaner, reverb: a_bit_drier}
+    note: >
+      A bundle is a set of group answers. A group the request also names directly keeps its own answer. "Realistic"
+      alone means unchanged: the defaults are already meant to be realistic.
+
+  - id: purpose
+    question: "What is the run for?"
+    options:
+      - id: training
+        label: "Training data"
+        bundle: {splits: training}
+      - id: evaluation
+        label: "An evaluation or test set"
+        bundle: {splits: evaluation}
+      - id: trial
+        label: "A quick trial of the setup, not real data"
+        bundle: {length: much_shorter, backends: fake}
+      - id: unchanged
+        label: "Not said"
+
+groups:
+  # ---------------------------------------------------------------- rooms and speakers
+  - id: room_mix
+    gate: "Does the request ask for more small meetings or more large meetings, such as more big rooms or more small rooms?"
+    question: "How should the mix of small and large meetings (small and big rooms) change?"
+    examples: ["mostly small calls", "focus on big meetings", "more big rooms", "half and half"]
+    options:
+      - id: all_small
+        label: "Only small meetings"
+        effects: [{path: room_classes.ratio, op: weights, value: {small: 1.0, large: 0.0}}]
+      - id: mostly_small
+        label: "Mostly small meetings"
+        effects: [{path: room_classes.ratio, op: weights, value: {small: 0.8, large: 0.2}}]
+      - id: balanced
+        label: "About half and half"
+        effects: [{path: room_classes.ratio, op: weights, value: {small: 0.5, large: 0.5}}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: mostly_large
+        label: "Mostly large meetings"
+        effects: [{path: room_classes.ratio, op: weights, value: {small: 0.1, large: 0.9}}]
+      - id: all_large
+        label: "Only large meetings"
+        effects: [{path: room_classes.ratio, op: weights, value: {small: 0.0, large: 1.0}}]
+
+  - id: meeting_size
+    gate: "Does the request ask for meetings with fewer or more people?"
+    question: "How should the number of people per meeting change?"
+    examples: ["bigger meetings", "lots of 20-person meetings", "smaller groups"]
+    options:
+      - id: smaller
+        label: "Fewer people"
+        effects:
+          - {path: room_classes.classes.small.speakers, op: range, lo: 2, hi: 4}
+          - {path: room_classes.classes.large.speakers, op: range, lo: 7, hi: 12}
+      - id: unchanged
+        label: "Unchanged"
+      - id: larger
+        label: "More people"
+        effects:
+          - {path: room_classes.classes.small.speakers, op: range, lo: 4, hi: 6}
+          - {path: room_classes.classes.large.speakers, op: range, lo: 12, hi: 20}
+      - id: largest
+        label: "As many people as possible"
+        effects:
+          - {path: room_classes.classes.small.speakers, op: range, lo: 5, hi: 6}
+          - {path: room_classes.classes.large.speakers, op: range, lo: 16, hi: 20}
+    note: "The class boundary is fixed at 7 speakers. To get only large meetings as well, room_mix answers that."
+
+  - id: length
+    gate: "Does the request ask for shorter or longer meetings?"
+    scope: true
+    question: "How should the meeting length change?"
+    examples: ["short meetings", "long all-hands", "quick 5 minute calls"]
+    options:
+      - id: much_shorter
+        label: "Much shorter (about half)"
+        effects: [{path: "dynamics.duration_min.{class}", op: scale, by: 0.5}]
+      - id: shorter
+        label: "A bit shorter"
+        effects: [{path: "dynamics.duration_min.{class}", op: scale, by: 0.75}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: longer
+        label: "A bit longer"
+        effects: [{path: "dynamics.duration_min.{class}", op: scale, by: 1.5}]
+      - id: much_longer
+        label: "Much longer (about double)"
+        effects: [{path: "dynamics.duration_min.{class}", op: scale, by: 2.0}]
+    note: "Longer meetings cost more on real backends, about 75 s of compute per minute of audio."
+
+  # ---------------------------------------------------------------- turn-taking
+  - id: overlap
+    gate: "Does the request ask for more or less overlapping speech, crosstalk or people talking at once?"
+    scope: true
+    question: "How should the amount of overlapping speech change?"
+    examples: ["more crosstalk", "people talking over each other", "clean turn-taking"]
+    options:
+      - id: much_less
+        label: "Much less overlap"
+        effects:
+          - {path: "turn_taking.overlap_target.{class}", op: shift, by: -0.10}
+          - {path: turn_taking.overlap_share, op: shift, by: -0.2}
+      - id: less
+        label: "Less overlap"
+        effects:
+          - {path: "turn_taking.overlap_target.{class}", op: shift, by: -0.05}
+          - {path: turn_taking.overlap_share, op: shift, by: -0.1}
+      - id: unchanged
+        label: "Unchanged"
+      - id: more
+        label: "More overlap"
+        effects:
+          - {path: "turn_taking.overlap_target.{class}", op: shift, by: 0.05}
+          - {path: turn_taking.overlap_share, op: shift, by: 0.1}
+      - id: much_more
+        label: "Much more overlap"
+        effects:
+          - {path: "turn_taking.overlap_target.{class}", op: shift, by: 0.10}
+          - {path: turn_taking.overlap_share, op: shift, by: 0.2}
+    note: >
+      overlap_share moves with the target so stage 6 does not have to stretch overlaps far to reach it, which would
+      sound less natural.
+
+  - id: interruptions
+    gate: "Does the request ask for more or fewer interruptions or people cutting each other off?"
+    question: "How should interruptions change?"
+    examples: ["heated meeting with lots of interrupting", "polite, nobody cuts in"]
+    options:
+      - id: none
+        label: "Almost none"
+        effects: [{path: turn_taking.interruption_rate, op: range, lo: 0.0, hi: 0.01}]
+      - id: fewer
+        label: "Fewer"
+        effects: [{path: turn_taking.interruption_rate, op: shift, by: -0.03}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: more
+        label: "More"
+        effects: [{path: turn_taking.interruption_rate, op: shift, by: 0.05}]
+      - id: many_more
+        label: "Many more"
+        effects: [{path: turn_taking.interruption_rate, op: shift, by: 0.10}]
+
+  - id: backchannels
+    gate: "Does the request ask for more or fewer short responses such as \"mm\", \"ok\" or \"yah\" from listeners?"
+    question: "How should backchannels change?"
+    examples: ["lots of mm-hmms", "listeners stay quiet"]
+    options:
+      - id: fewer
+        label: "Fewer"
+        effects: [{path: turn_taking.backchannels_per_min, op: scale, by: 0.5}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: more
+        label: "More"
+        effects: [{path: turn_taking.backchannels_per_min, op: scale, by: 2.0}]
+      - id: many_more
+        label: "Many more"
+        effects: [{path: turn_taking.backchannels_per_min, op: scale, by: 3.0}]
+
+  - id: dominance
+    gate: "Does the request say how evenly people share the talking, such as a few dominant voices or quiet attendees?"
+    question: "How should the talking be shared?"
+    examples: ["one boss talks the whole time", "everyone contributes", "lots of silent attendees"]
+    options:
+      - id: equal
+        label: "About equally"
+        effects: [{path: turn_taking.zipf.exponent, op: set, value: 0.3}]
+      - id: more_even
+        label: "A bit more evenly"
+        effects: [{path: turn_taking.zipf.exponent, op: set, value: 0.7}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: dominated
+        label: "A few voices dominate"
+        effects: [{path: turn_taking.zipf.exponent, op: set, value: 1.5}]
+      - id: strongly_dominated
+        label: "One or two voices dominate, with a long tail of quiet people"
+        effects: [{path: turn_taking.zipf.exponent, op: set, value: 2.0}]
+
+  - id: pace
+    gate: "Does the request ask for a faster or slower pace, or shorter or longer turns?"
+    question: "How should the pace of the conversation change?"
+    examples: ["rapid back and forth", "long monologues", "slow, deliberate discussion"]
+    options:
+      - id: much_slower
+        label: "Much slower, long turns"
+        effects: [{path: dynamics.turns_per_min, op: scale, by: 0.6}]
+      - id: slower
+        label: "A bit slower"
+        effects: [{path: dynamics.turns_per_min, op: scale, by: 0.8}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: faster
+        label: "A bit faster"
+        effects: [{path: dynamics.turns_per_min, op: scale, by: 1.25}]
+      - id: much_faster
+        label: "Rapid back and forth, short turns"
+        effects: [{path: dynamics.turns_per_min, op: scale, by: 1.6}]
+
+  - id: code_switching
+    gate: "Does the request ask for more or less mixing of languages, such as Singlish, Mandarin, Malay or Tamil?"
+    question: "How much should speakers switch between languages?"
+    examples: ["heavy Singlish", "lots of Mandarin mixed in", "mostly standard English"]
+    options:
+      - id: little
+        label: "Little switching"
+        overlay: [{path: personas.code_switching, op: weights, value: {low: 0.8, medium: 0.2, high: 0.0}}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: more
+        label: "More switching"
+        overlay: [{path: personas.code_switching, op: weights, value: {low: 0.2, medium: 0.4, high: 0.4}}]
+      - id: heavy
+        label: "Heavy switching"
+        overlay: [{path: personas.code_switching, op: weights, value: {low: 0.0, medium: 0.3, high: 0.7}}]
+    note: >
+      Which languages a speaker mixes in comes from their NSC speaker, so "more Tamil" is not set here: the race
+      group answers it with more Indian speakers. This setting is not in the form, so the change goes into the
+      YAML overlay.
+
+  # ---------------------------------------------------------------- seating and participants
+  - id: presentations
+    gate: "Does the request mention presentations, presenters or someone standing at the front?"
+    scope: true
+    question: "How often should meetings have a presentation?"
+    examples: ["no presentations", "lots of slide-deck reviews"]
+    options:
+      - id: none
+        label: "Never"
+        effects: [{path: "seating.presenters.presentation.{class}", op: p, value: 0.0}]
+      - id: fewer
+        label: "Less often"
+        effects: [{path: "seating.presenters.presentation.{class}", op: scale_p, by: 0.5}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: more
+        label: "More often"
+        effects: [{path: "seating.presenters.presentation.{class}", op: p, value: 0.6}]
+      - id: most
+        label: "In most meetings"
+        effects: [{path: "seating.presenters.presentation.{class}", op: p, value: 0.85}]
+
+  - id: hybrid
+    gate: "Does the request mention remote participants, hybrid meetings, video calls or a speakerphone?"
+    scope: true
+    question: "How often should meetings have remote participants?"
+    examples: ["everyone in the room", "lots of people dialling in", "Zoom-style hybrid meetings"]
+    options:
+      - id: none
+        label: "Never"
+        effects: [{path: "acoustics.hybrid.{class}", op: p, value: 0.0}]
+      - id: fewer
+        label: "Less often"
+        effects: [{path: "acoustics.hybrid.{class}", op: scale_p, by: 0.5}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: more
+        label: "More often"
+        effects: [{path: "acoustics.hybrid.{class}", op: p, value: 0.5}]
+      - id: most
+        label: "In most meetings"
+        effects: [{path: "acoustics.hybrid.{class}", op: p, value: 0.85}]
+
+  - id: wall_seats
+    gate: "Does the request mention people sitting away from the table, along the wall or at the back?"
+    question: "How often should people choose a wall seat when the table has room?"
+    examples: ["people sitting at the back", "everyone at the table"]
+    options:
+      - id: never
+        label: "Never by choice (only when the table is full)"
+        effects: [{path: seating.wall.by_choice, op: p, value: 0.0}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: often
+        label: "Often"
+        effects: [{path: seating.wall.by_choice, op: p, value: 0.4}]
+      - id: usually
+        label: "Usually"
+        effects: [{path: seating.wall.by_choice, op: p, value: 0.7}]
+    note: "Large rooms only. People still go to the wall when the table is full."
+
+  - id: chair_position
+    gate: "Does the request say where the person chairing the meeting sits?"
+    question: "Where should the chair sit in large rooms?"
+    examples: ["the boss at the head of the table", "chair sits anywhere"]
+    options:
+      - id: anywhere
+        label: "Any table seat"
+        effects: [{path: seating.chair_at_head, op: p, value: 0.0}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: always_head
+        label: "Always at the head of the table"
+        effects: [{path: seating.chair_at_head, op: p, value: 1.0}]
+
+  # ---------------------------------------------------------------- acoustics and device
+  - id: reverb
+    gate: "Does the request ask for more or less echo or reverberation, or mention glass, bare or treated rooms?"
+    scope: true
+    question: "How should the room reverberation change?"
+    examples: ["echoey glass rooms", "dead, carpeted rooms", "a bit more room sound"]
+    options:
+      - id: much_drier
+        label: "Much drier (well-treated rooms)"
+        effects: [{path: "acoustics.rt60.{class}", op: scale, by: 0.6}]
+      - id: a_bit_drier
+        label: "A bit drier"
+        effects: [{path: "acoustics.rt60.{class}", op: scale, by: 0.8}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: more_echo
+        label: "More echo"
+        effects: [{path: "acoustics.rt60.{class}", op: scale, by: 1.3}]
+      - id: much_more_echo
+        label: "Much more echo"
+        effects: [{path: "acoustics.rt60.{class}", op: scale, by: 1.7}]
+
+  - id: noise
+    gate: "Does the request ask for noisier or cleaner recordings, or mention background noise?"
+    scope: true
+    question: "How should the background noise change?"
+    examples: ["noisy rooms", "aircon noise", "clean audio", "a bit of background noise"]
+    options:
+      - id: much_cleaner
+        label: "Much cleaner"
+        effects: [{path: "acoustics.snr_db.{class}", op: shift, by: 10}]
+      - id: a_bit_cleaner
+        label: "A bit cleaner"
+        effects: [{path: "acoustics.snr_db.{class}", op: shift, by: 5}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: a_bit_noisier
+        label: "A bit noisier"
+        effects: [{path: "acoustics.snr_db.{class}", op: shift, by: -5}]
+      - id: much_noisier
+        label: "Much noisier"
+        effects: [{path: "acoustics.snr_db.{class}", op: shift, by: -10}]
+    note: "SNR is speech over the steady noise beds; keyboard and event sounds are set relative to speech."
+
+  - id: mic_placement
+    gate: "Does the request say where the table mic sits in large rooms, such as near the chair or in the middle?"
+    question: "Where should the table mic sit in large rooms?"
+    examples: ["mic in front of the chairperson", "mic in the middle of the table"]
+    options:
+      - id: centre
+        label: "Always near the table centre"
+        effects: [{path: acoustics.mic.chair_mic, op: p, value: 0.0}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: often_chair
+        label: "Often in front of the chair"
+        effects: [{path: acoustics.mic.chair_mic, op: p, value: 0.6}]
+      - id: always_chair
+        label: "Always in front of the chair"
+        effects: [{path: acoustics.mic.chair_mic, op: p, value: 1.0}]
+
+  - id: mic_array
+    gate: "Does the request ask for multichannel audio, a mic array, or single-channel audio only?"
+    question: "How often should the large-room table mic be a 4-channel array?"
+    examples: ["we need multichannel", "single mic only"]
+    options:
+      - id: never
+        label: "Never: single mic only"
+        effects: [{path: acoustics.mic.centre_array, op: p, value: 0.0}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: always
+        label: "Always an array"
+        effects: [{path: acoustics.mic.centre_array, op: p, value: 1.0}]
+
+  - id: device
+    gate: >
+      Does the request mention the recording device or its quality, such as cheap mics, laptops, phone or app audio,
+      compression or distortion?
+    question: "How should the recording device quality change?"
+    examples: ["cheap laptop mics", "recorded over Teams", "studio quality", "phone-quality audio"]
+    options:
+      - id: clean_devices
+        label: "Clean devices, no compression"
+        effects:
+          - {path: acoustics.device_chain.agc, op: p, value: 0.3}
+          - {path: acoustics.device_chain.band_limit, op: p, value: 0.0}
+          - {path: acoustics.device_chain.codec, op: p, value: 0.0}
+          - {path: acoustics.device_chain.clipping, op: p, value: 0.0}
+      - id: a_bit_cleaner
+        label: "A bit cleaner"
+        effects:
+          - {path: acoustics.device_chain.band_limit, op: scale_p, by: 0.5}
+          - {path: acoustics.device_chain.codec, op: scale_p, by: 0.5}
+          - {path: acoustics.device_chain.clipping, op: scale_p, by: 0.5}
+      - id: unchanged
+        label: "Unchanged"
+      - id: call_apps
+        label: "Mostly conferencing-app audio"
+        effects:
+          - {path: acoustics.device_chain.agc, op: p, value: 0.8}
+          - {path: acoustics.device_chain.band_limit, op: p, value: 0.7}
+          - {path: acoustics.device_chain.codec, op: p, value: 0.8}
+      - id: poor_devices
+        label: "Poor devices throughout"
+        effects:
+          - {path: acoustics.device_chain.agc, op: p, value: 0.9}
+          - {path: acoustics.device_chain.band_limit, op: p, value: 0.9}
+          - {path: acoustics.device_chain.codec, op: p, value: 0.9}
+          - {path: acoustics.device_chain.clipping, op: p, value: 0.2}
+
+  # ---------------------------------------------------------------- voices, splits and stages
+  - id: race
+    gate: >
+      Does the request ask for more or fewer speakers of a particular race (Chinese, Malay, Indian or Others), or
+      for a more even or more typical mix of races?
+    question: "How should the mix of races among the speakers change?"
+    examples: ["more Malay speakers", "an even mix of races", "mostly Chinese voices", "no Others", "more Tamil"]
+    options:
+      - id: as_pool
+        label: "As in the speaker pool"
+        effects: [{path: speaker_pool.ethnicity_mix, op: set, value: null}]
+      - id: balanced
+        label: "Even shares of Chinese, Malay and Indian"
+        effects: [{path: speaker_pool.ethnicity_mix, op: set,
+                   value: {dist: categorical, weights: {CHINESE: 0.32, MALAY: 0.32, INDIAN: 0.32, OTHERS: 0.04}}}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: more_chinese
+        label: "Mostly Chinese"
+        effects: [{path: speaker_pool.ethnicity_mix, op: set,
+                   value: {dist: categorical, weights: {CHINESE: 0.7, MALAY: 0.14, INDIAN: 0.14, OTHERS: 0.02}}}]
+      - id: more_malay
+        label: "More Malay"
+        effects: [{path: speaker_pool.ethnicity_mix, op: set,
+                   value: {dist: categorical, weights: {CHINESE: 0.3, MALAY: 0.5, INDIAN: 0.18, OTHERS: 0.02}}}]
+      - id: more_indian
+        label: "More Indian"
+        effects: [{path: speaker_pool.ethnicity_mix, op: set,
+                   value: {dist: categorical, weights: {CHINESE: 0.3, MALAY: 0.18, INDIAN: 0.5, OTHERS: 0.02}}}]
+      - id: no_others
+        label: "No Others"
+        effects: [{path: speaker_pool.ethnicity_mix, op: set,
+                   value: {dist: categorical, weights: {CHINESE: 0.5, MALAY: 0.26, INDIAN: 0.24, OTHERS: 0.0}}}]
+      - id: only_chinese
+        label: "Chinese speakers only"
+        confirm: true
+        effects: [{path: speaker_pool.ethnicity_mix, op: set,
+                   value: {dist: categorical, weights: {CHINESE: 1.0, MALAY: 0.0, INDIAN: 0.0, OTHERS: 0.0}}}]
+      - id: only_malay
+        label: "Malay speakers only"
+        confirm: true
+        effects: [{path: speaker_pool.ethnicity_mix, op: set,
+                   value: {dist: categorical, weights: {CHINESE: 0.0, MALAY: 1.0, INDIAN: 0.0, OTHERS: 0.0}}}]
+      - id: only_indian
+        label: "Indian speakers only"
+        confirm: true
+        effects: [{path: speaker_pool.ethnicity_mix, op: set,
+                   value: {dist: categorical, weights: {CHINESE: 0.0, MALAY: 0.0, INDIAN: 1.0, OTHERS: 0.0}}}]
+    note: >
+      Race is the NSC speaker sheet's ethnicity. It sets the voice and so its accent, the persona's name and the
+      languages they mix in, so "more Tamil" means more Indian speakers (only some of them have Tamil as a first
+      language). Every value is a share of all speakers. Others exist only in the test split (5 voices), so their
+      share applies to test meetings only. A single race may not fill the largest meetings of every split (in the
+      p3-406-v2 pool dev has 11 Malay and 12 Indian voices), so those options always ask the user, and the preview
+      names the shortfall; fewer people or another split mix fixes it.
+
+  - id: splits
+    gate: "Does the request say whether the data is for training, validation or testing?"
+    question: "How should meetings be shared between train, dev and test?"
+    examples: ["training data", "a held-out test set", "an even split"]
+    options:
+      - id: training
+        label: "Mostly training"
+        effects: [{path: speaker_pool.split_mix, op: weights, value: {train: 0.9, dev: 0.05, test: 0.05}}]
+      - id: unchanged
+        label: "Unchanged"
+      - id: balanced
+        label: "More even"
+        effects: [{path: speaker_pool.split_mix, op: weights, value: {train: 0.6, dev: 0.2, test: 0.2}}]
+      - id: evaluation
+        label: "Mostly test"
+        effects: [{path: speaker_pool.split_mix, op: weights, value: {train: 0.0, dev: 0.2, test: 0.8}}]
+    note: "Train and test both have many voices in the p3-406-v2 pool (170 and 178), so either kind of run has varied voices."
+
+  - id: stages
+    gate: "Does the request explicitly ask to skip script judging, voice checks or the room simulation?"
+    question: "Which stage should be switched off?"
+    examples: ["skip the judge to save time", "no room simulation, just clean tracks"]
+    options:
+      - id: unchanged
+        label: "None"
+      - id: no_judge
+        label: "Stage 3, script validation"
+        effects: [{path: stages.3.enabled, op: set, value: false}]
+      - id: no_voice_checks
+        label: "Stage 5, voice validation"
+        effects: [{path: stages.5.enabled, op: set, value: false}]
+      - id: no_simulation
+        label: "Stage 7, acoustic simulation"
+        effects: [{path: stages.7.enabled, op: set, value: false}]
+    note: >
+      In confirm_always: switching a stage off lowers data quality or removes the mixture, so it is only ever asked,
+      never suggested.
+
+  - id: backends
+    gate: "Does the request ask for a run without the GPU, or a fake or test run?"
+    question: "Which backends should the run use?"
+    examples: ["just test the config", "a dry run without the models"]
+    options:
+      - id: unchanged
+        label: "Unchanged"
+      - id: fake
+        label: "Fake backends, no GPU"
+        effects: [{path: backends.mode, op: set, value: fake}]
+    note: "In confirm_always. Only fake is ever offered: real backends always go through the builder's own GPU dialog."

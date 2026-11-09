@@ -1,4 +1,4 @@
-# Singlish transcription convention (design doc "Singlish transcription convention"). Versioned with each
+# Singlish transcription convention (specs/ARCHITECTURE.md, "Singlish transcription convention"). Versioned with each
 # run: stage 2 writes scripts in it, stage 5 compares ASR output in it, stage 8 writes transcripts in it.
 version: lex-1
 

@@ -182,6 +182,25 @@ class PhaseScheduler:
         run_post(self, ids, report, until=until, only=only)
         return report
 
+    def run_waves(self, *, until: StageId = StageId.LABELS, only: Phase | None = None) -> RunReport:
+        """`run` over every meeting, in waves of `phases.wave_size` meetings (in meeting order) when it is set and
+        the call is not limited to one phase. Each wave goes through every stage up to `until`, so its meetings
+        finish before the next wave starts; finished stages stay cache hits, so a resume skips done waves."""
+        ids = RunPaths(self.run_dir).meeting_ids()
+        size = self.cfg.phases.wave_size
+        if not size or size >= len(ids) or only is not None:
+            return self.run(until=until, only=only)
+        total = RunReport()
+        for i in range(0, len(ids), size):
+            log.info("wave %d of %d: meetings %s to %s", i // size + 1, -(-len(ids) // size), ids[i],
+                     ids[min(i + size, len(ids)) - 1])
+            rep = self.run(until=until, meetings=ids[i:i + size])
+            total.outcomes += rep.outcomes
+            total.rounds = max(total.rounds, rep.rounds)
+            for k, v in rep.phase_seconds.items():
+                total.phase_seconds[k] = total.phase_seconds.get(k, 0.0) + v
+        return total
+
     def _exhausted(self, meeting_id: str) -> bool:
         st = self.store.get(meeting_id).get(StageId.SCRIPT)
         return st.state == "retry" and st.attempts >= self.cfg.retries.script_rounds

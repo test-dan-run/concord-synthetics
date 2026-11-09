@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from .meeting import Split
 
@@ -66,11 +66,28 @@ class RuleCheck(_A):
 
 
 class JudgeScores(_A):
-    coherence: float
-    singlish: float
+    """The scores the result's rubric asks for, 1 to 5. Every rubric has realism, persona_consistency and overall;
+    rubric_v1 and v2 add coherence and singlish, rubric_v3 the five after overall. A criterion the rubric does not
+    ask for is left out of the file."""
+
+    coherence: float | None = None
+    singlish: float | None = None
     realism: float  # realistic messiness, rewarded over polish
     persona_consistency: dict[str, float]  # speaker_id -> 1..5
     overall: float
+    responsiveness: float | None = None
+    consistency: float | None = None
+    progression: float | None = None
+    language_fit: float | None = None
+    social_dynamics: float | None = None
+
+    @model_serializer(mode="wrap")
+    def _only_asked(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return {k: v for k, v in handler(self).items() if v is not None}
+
+    def criteria(self) -> dict[str, float]:
+        """Every single-number score the rubric asked for, overall excluded."""
+        return {k: v for k, v in self.model_dump().items() if k not in ("persona_consistency", "overall")}
 
 
 class JudgeResult(_A):

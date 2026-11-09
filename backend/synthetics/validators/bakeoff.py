@@ -37,7 +37,7 @@ from ..artifacts.io import atomic_write_text
 from ..backends.base import Audio, VoiceRef
 from ..config.schema import Role, RunConfig
 from ..nsc.references import ReferenceIndex
-from ..text.singlish import Lexicon, text_norm, tts_input
+from ..text.singlish import Lexicon, run_lexicon, text_norm, tts_input
 from .voice_checks import asr_words, centroid, score_asr
 
 ROLES = (Role.TTS, Role.ASR_PRIMARY, Role.ASR_SINGLISH, Role.SV_WAVLM, Role.SV_REDIMNET, Role.QUALITY)
@@ -92,7 +92,7 @@ class Bakeoff:
     def __init__(self, cfg: RunConfig, backends, refs: ReferenceIndex, out_dir: Path, *,
                  log: Callable[[str], None] = print):
         self.cfg, self.refs, self.out, self.log = cfg, refs, Path(out_dir), log
-        self.lex = Lexicon.load(cfg.lexicon.path)
+        self.lex = run_lexicon(cfg)
         self.tts = backends.get(Role.TTS)
         self.asr = {Role.ASR_PRIMARY.value: backends.get(Role.ASR_PRIMARY),
                     Role.ASR_SINGLISH.value: backends.get(Role.ASR_SINGLISH)}

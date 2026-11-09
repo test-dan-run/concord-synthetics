@@ -1,4 +1,4 @@
-# Stages 1 and 7. Design doc "Acoustics".
+# Stages 1 and 7. specs/ARCHITECTURE.md, "Acoustics".
 acoustics:
   rt60:
     small: {dist: uniform, lo: 0.3, hi: 0.6}

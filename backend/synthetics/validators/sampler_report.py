@@ -15,8 +15,9 @@ import numpy as np
 
 from ..acoustics import geometry as geo
 from ..artifacts.meeting import MeetingSpec
+from ..artifacts.models import SpeakerSplits
 from ..config.distributions import Categorical, IntUniform, Uniform
-from ..config.schema import RunConfig
+from ..config.schema import ETHNICITIES, RunConfig
 
 Z = 4.0
 FLOOR = 0.005
@@ -73,7 +74,8 @@ def _in_range(name: str, values: Sequence[float], lo: float, hi: float, eps: flo
                  len(values), not bad, f"{len(bad)} out of range" if bad else "")
 
 
-def sampler_checks(cfg: RunConfig, meetings: Sequence[MeetingSpec]) -> list[Check]:
+def sampler_checks(cfg: RunConfig, meetings: Sequence[MeetingSpec], splits: SpeakerSplits | None = None) -> list[Check]:
+    """`splits`, the speaker pool the meetings drew from, adds the ethnicity mix checks."""
     rc, seat, ac = cfg.room_classes, cfg.seating, cfg.acoustics
     checks: list[Check] = []
     by = {c: [m for m in meetings if m.room_class == c] for c in ("small", "large")}
@@ -82,6 +84,8 @@ def sampler_checks(cfg: RunConfig, meetings: Sequence[MeetingSpec]) -> list[Chec
                         rc.ratio.probs["small"]))
     for split, p in cfg.speaker_pool.split_mix.probs.items():
         checks.append(_rate(f"split: {split} share", (m.split == split for m in meetings), p))
+    if cfg.speaker_pool.ethnicity_mix is not None and splits is not None:
+        checks += _ethnicity_checks(cfg.speaker_pool.ethnicity_mix, splits, meetings)
 
     for c, ms in by.items():
         spk = rc.classes[c].speakers
@@ -194,6 +198,25 @@ def sampler_checks(cfg: RunConfig, meetings: Sequence[MeetingSpec]) -> list[Chec
                         float(np.mean([m.fit_resamples for m in meetings])) if meetings else 0.0, 1.0,
                         "informational"))
     return checks
+
+
+def _ethnicity_checks(mix: Categorical, splits: SpeakerSplits, meetings: Sequence[MeetingSpec]) -> list[Check]:
+    """Each group's share of seats. A seat's target is the group's weight among the groups its meeting's split has
+    speakers for, as stage 1 draws it."""
+    present = {s: {splits.speakers[x].ethnicity for x in splits.in_split(s)} for s in {m.split for m in meetings}}
+    out = []
+    for e in ETHNICITIES:
+        hits, targets = [], []
+        for m in meetings:
+            groups = [g for g in present[m.split] if mix.weights.get(g, 0) > 0]
+            p = mix.weights[e] / sum(mix.weights[g] for g in groups) if e in groups else 0.0
+            for person in m.people:
+                hits.append(person.nsc_speaker.ethnicity == e)
+                targets.append(p)
+        if hits:
+            out.append(_rate(f"ethnicity: {e.title()} share of speakers", hits, float(np.mean(targets)),
+                             "lower when a meeting needs more of a group than its split has"))
+    return out
 
 
 def _chair_at_head(m: MeetingSpec) -> bool:

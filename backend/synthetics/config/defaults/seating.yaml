@@ -1,4 +1,4 @@
-# Stage 1: positions. Design doc "Seating and presenters".
+# Stage 1: positions. specs/ARCHITECTURE.md, "Meeting sampling".
 seating:
   seated_mouth_height: {dist: uniform, lo: 1.1, hi: 1.2}
   front_wall: W

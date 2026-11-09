@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import itertools
 from collections import defaultdict
 
 import numpy as np
@@ -38,10 +37,14 @@ def many(cfg, splits):
 
 
 def _qa_interruptions(m: MeetingSpec, utts: list[Utt]) -> int:
-    """Questions that cut in on a presenter. The Q&A of a presentation plans them on top of the drawn rate."""
-    presenters = set(m.dynamics.presentation.presenters) if m.dynamics.presentation else set()
+    """Interruptions in the presentation's turn range. Its Q&A plans them on top of the drawn rate (a question
+    often follows another question, not the presenter). The range can run a few turns past a short Q&A, so this
+    can count a discussion interruption too, which only loosens the bound."""
+    seg = m.dynamics.presentation
+    if seg is None:
+        return 0
     main = [u for u in utts if u.kind not in ("backchannel", "side")]
-    return sum(b.kind == "interruption" and a.speaker_id in presenters for a, b in itertools.pairwise(main))
+    return sum(u.kind == "interruption" for u in main[seg.start_turn:seg.end_turn])
 
 
 def test_realised_rates_fall_within_their_configured_ranges(cfg, many):

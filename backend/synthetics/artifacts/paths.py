@@ -102,6 +102,11 @@ class MeetingPaths:
         return self.dir / "voice_validation.json"
 
     @property
+    def voice_measures(self) -> Path:
+        """Stage 5's measurements per utterance audio, reused on its retries (a cache, not an output)."""
+        return self.dir / "voice_measures.npz"
+
+    @property
     def timeline(self) -> Path:
         return self.dir / "timeline.json"
 
@@ -119,6 +124,19 @@ class MeetingPaths:
     @property
     def mixture_mc(self) -> Path:
         return self.dir / "mixture_mc.wav"
+
+    @property
+    def stems_dir(self) -> Path:
+        return self.dir / "stems"
+
+    def stem(self, speaker_id: str) -> Path:
+        """One speaker as heard at the mic (stage 7, `simulation.write_stems`)."""
+        return self.stems_dir / f"{speaker_id}.wav"
+
+    @property
+    def noise(self) -> Path:
+        """The noise on its own as heard at the mic (stage 7, `simulation.write_stems`)."""
+        return self.dir / "noise.wav"
 
     @property
     def render(self) -> Path:

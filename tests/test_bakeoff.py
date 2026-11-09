@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
@@ -12,7 +13,7 @@ from synthetics.config import load_run_config
 from synthetics.nsc.references import ReferenceIndex
 from synthetics.nsc.settings import nsc_paths
 from synthetics.validators.bakeoff import Bakeoff, run_bakeoff, select_speakers
-from synthetics.validators.sv_calibration import eer, run_calibration
+from synthetics.validators.sv_calibration import calibrate, eer, run_calibration
 from voice_helpers import fake_refs
 
 
@@ -91,7 +92,8 @@ def test_bakeoff_resumes_after_a_crash(tmp_path, monkeypatch):
 
 def test_calibrate_sv_writes_an_overlay_the_config_accepts(tmp_path):
     out = tmp_path / "sv.yaml"
-    res = run_calibration(mode="fake", out=out, lease=False, speakers=ReferenceIndex.load(nsc_paths()).speakers()[:20],
+    refs = ReferenceIndex.load(nsc_paths())
+    res = run_calibration(mode="fake", out=out, lease=False, speakers=refs.speakers()[:20], refs=refs,
                           log=lambda _: None)
     for m in ("sv_wavlm", "sv_redimnet"):
         f = res["models"][m]
@@ -102,6 +104,33 @@ def test_calibrate_sv_writes_an_overlay_the_config_accepts(tmp_path):
     assert cfg.thresholds.sv == overlay["thresholds"]["sv"]
     assert cfg.thresholds.sv_consistency_min == overlay["thresholds"]["sv_consistency_min"]
     assert json.loads(out.with_suffix(".json").read_text())["clips"] == 60
+
+
+def test_calibrate_sv_holds_one_model_at_a_time():
+    """The platform starts one GPU service at a time, so each model embeds every clip inside its own hold."""
+    refs = ReferenceIndex.load(nsc_paths())
+    events = []
+
+    class Embedder:
+        def __init__(self, name):
+            self.name = name
+
+        def embed(self, audios):
+            events.append(("embed", self.name))
+            v = np.ones(4)
+            return [v / np.linalg.norm(v) for _ in audios]
+
+    @contextmanager
+    def hold(name):
+        events.append(("up", name))
+        yield
+        events.append(("down", name))
+
+    calibrate(refs, {"a": Embedder("a"), "b": Embedder("b")}, speakers=refs.speakers()[:3], hold=hold,
+              log=lambda _: None)
+    assert events[0] == ("up", "a") and events[10] == ("down", "a")
+    assert events[11] == ("up", "b") and events[-1] == ("down", "b")
+    assert {e for e in events[1:10]} == {("embed", "a")} and {e for e in events[12:-1]} == {("embed", "b")}
 
 
 def test_eer_on_separated_and_overlapping_scores():

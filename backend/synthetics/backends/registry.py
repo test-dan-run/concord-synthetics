@@ -77,6 +77,10 @@ class Backends:
                 return fakes_audio.FakeSpeakerEmbedder(role.value)
             if role == Role.ALIGNER:
                 return fakes_audio.FakeAligner()
+            if role == Role.DECISION:
+                from ..suggest.models import FakeDecisionModel
+
+                return FakeDecisionModel()
             raise BackendError(f"no fake for role {role.value!r} yet")
         from . import aicore_impl
 
@@ -94,6 +98,10 @@ class Backends:
             return aicore_impl.AicoreSpeakerEmbedder(service, self.transport, name=role.value)
         if role == Role.ALIGNER:
             return aicore_impl.AicoreAligner(service, self.transport)
+        if role == Role.DECISION:
+            from ..suggest.models import SystemOneDecisionModel
+
+            return SystemOneDecisionModel(service, self.transport)
         raise BackendError(f"role {role.value!r} has no aicore client")
 
 

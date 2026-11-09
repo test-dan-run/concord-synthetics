@@ -36,6 +36,14 @@ def resolve(cfg: RunConfig) -> RunConfig:
     })
 
 
+class PoolShortfall(ValueError):
+    """The ethnicity mix cannot fill the largest meetings the config can draw from the speaker pool."""
+
+    def __init__(self, problems: list[str]):
+        super().__init__("the ethnicity mix cannot fill every meeting: " + "; ".join(problems))
+        self.problems = problems
+
+
 def write_splits(run_dir: Path, cfg: RunConfig) -> Path:
     rc = resolve(cfg)
     rp = RunPaths(run_dir)
@@ -51,6 +59,13 @@ def init_run(run_id: str, *, n_meetings: int, seed: int, configs: list[Path] | N
     rp = RunPaths(run_dir)
     if rp.config.exists() and not exist_ok:
         raise FileExistsError(f"run {run_id} already exists at {run_dir}")
+    if cfg.speaker_pool.ethnicity_mix is not None:  # refused before anything is written
+        from ..stages.s1_sample import ethnicity_shortfalls
+
+        rc = resolve(cfg)
+        short = ethnicity_shortfalls(rc, speaker_splits(rc.speaker_pool.path, rc.speaker_pool.version))
+        if short:
+            raise PoolShortfall(short)
     dump_run_config(cfg, rp.config)
     write_splits(run_dir, cfg)
     for i in range(1, n_meetings + 1):

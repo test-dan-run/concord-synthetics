@@ -128,23 +128,43 @@ export function FieldInput({ field, value, onChange, defaultValue, error }: { fi
   } else if (field.kind === "weights") {
     const w = d.weights ?? {};
     const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
+    const unset = field.unset && value == null;
     control = (
-      <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {(field.keys ?? Object.keys(w)).map((k, i) => (
-          <label key={k} className="flex items-center gap-2 text-xs text-muted">
-            {k}
-            <NumInput
-              id={i === 0 ? id : undefined}
-              value={w[k] ?? 0}
-              onValue={(v) => onChange({ dist: "categorical", weights: { ...w, [k]: Math.max(0, v) } })}
-              scale={100}
-              min={0}
-              step={1}
-              className="w-[68px]"
+      <span className="flex flex-col gap-2">
+        {field.unset && (
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              id={id}
+              type="checkbox"
+              checked={unset}
+              onChange={(e) => onChange(e.target.checked ? null : { dist: "categorical", weights: { ...field.unset!.start } })}
+              className="size-4 accent-primary cursor-pointer"
             />
-            <span className="num text-subtle" aria-label={`${k} share`}>{`${Math.round(((w[k] ?? 0) / total) * 100)}%`}</span>
+            {field.unset.label}
           </label>
-        ))}
+        )}
+        {!unset && (
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {(field.keys ?? Object.keys(w)).map((k, i) => {
+              const name = field.keyLabels?.[k] ?? k;
+              return (
+                <label key={k} className="flex items-center gap-2 text-xs text-muted">
+                  {name}
+                  <NumInput
+                    id={i === 0 && !field.unset ? id : undefined}
+                    value={w[k] ?? 0}
+                    onValue={(v) => onChange({ dist: "categorical", weights: { ...w, [k]: Math.max(0, v) } })}
+                    scale={100}
+                    min={0}
+                    step={1}
+                    className="w-[68px]"
+                  />
+                  <span className="num text-subtle" aria-label={`${name} share`}>{`${Math.round(((w[k] ?? 0) / total) * 100)}%`}</span>
+                </label>
+              );
+            })}
+          </span>
+        )}
       </span>
     );
   } else {

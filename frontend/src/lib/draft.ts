@@ -25,6 +25,11 @@ export interface Field {
   int?: boolean;
   /** for `weights`: the keys, in order */
   keys?: string[];
+  /** for `weights`: how each key is shown, when not as written */
+  keyLabels?: Record<string, string>;
+  /** for `weights` that may be unset (null): the switch's label for null, and the weights it starts from when
+   *  switched off */
+  unset?: { label: string; start: Record<string, number> };
   hint?: string;
   info: Info;
 }
@@ -215,7 +220,7 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "splits",
-    title: "Splits",
+    title: "Splits and voices",
     note: "Each meeting draws its split, then clones voices only from that split's NSC speakers.",
     fields: [
       {
@@ -223,6 +228,16 @@ export const SECTIONS: Section[] = [
         info: {
           what: "The share of meetings in train, dev and test. Each split has its own fixed NSC speakers (50, 25 and 100), and a meeting only clones voices from its own split.",
           why: "This keeps the splits speaker-disjoint, so test results measure voices the model has never heard. Raise train for training data, or test when building an evaluation set.",
+        },
+      },
+      {
+        path: "speaker_pool.ethnicity_mix", label: "Race mix", kind: "weights", keys: ["CHINESE", "MALAY", "INDIAN", "OTHERS"],
+        keyLabels: { CHINESE: "Chinese", MALAY: "Malay", INDIAN: "Indian", OTHERS: "Others" },
+        unset: { label: "As in the pool", start: { CHINESE: 0.49, MALAY: 0.25, INDIAN: 0.23, OTHERS: 0.03 } },
+        hint: "Share of speakers of each race",
+        info: {
+          what: "The share of speakers of each race, as the NSC speaker sheet records it. Each person draws a race from these shares, then a voice of that race from the meeting's split. A race at 0 never appears. As in the pool, every voice of the split is equally likely.",
+          why: "Race sets the voice, its accent, the persona's name and the languages they mix in. The pool is small: train has 25 Chinese, 13 Malay and 12 Indian voices and no Others, so a strong skew repeats the same few voices, and a mix that cannot fill the largest meeting is refused.",
         },
       },
     ],

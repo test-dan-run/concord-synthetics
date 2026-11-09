@@ -83,6 +83,10 @@ bakeoff *flags:
 calibrate-sv *flags:
     {{cli}} calibrate-sv {{flags}}
 
+# score the decision model (CPU service) on labelled requests; --fake scores the word-matching fake
+suggest-eval *flags:
+    {{cli}} suggest-eval {{flags}}
+
 # check a run against the viewer's data contract
 viewer-contract run_id:
     {{cli}} viewer-contract -r {{run_id}}

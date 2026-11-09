@@ -253,9 +253,12 @@ def unique_word(script: Script) -> str:
     pytest.skip("no turn with a unique word in this fake script")
 
 
+UNIQUE_WORD_SEED = 2  # a fake script with a turn whose word no other turn has (seed 11's has none)
+
+
 def test_failing_utterances_are_resynthesised_with_a_new_seed(tmp_path):
     FirstTakeFails.seen = {}
-    rd, cfg = scripted_run(tmp_path)
+    rd, cfg = scripted_run(tmp_path, seed=UNIQUE_WORD_SEED)
     mid = RunPaths(rd).meeting_ids()[0]
     script = read_model(RunPaths(rd).meeting(mid).script, Script)
     word = unique_word(script)
@@ -478,3 +481,80 @@ def test_fake_backends_stand_in_a_fake_voice_for_real_reference_audio(tmp_path):
     assert float(sv.embed([fake.audio])[0] @ sv.embed([clone])[0]) == pytest.approx(1.0)
     real = refs.voice_ref("00860519_0845")
     assert isinstance(real, VoiceRef) and float(sv.embed([real.audio])[0] @ sv.embed([clone])[0]) < 0.9
+
+
+class CountingAsr(FirstTakeFails):
+    """FirstTakeFails that counts its calls."""
+
+    def __init__(self, word: str):
+        super().__init__(word)
+        self.calls = 0
+
+    def transcribe(self, audio, *, language=None):
+        self.calls += 1
+        return super().transcribe(audio, language=language)
+
+
+def test_a_retry_measures_only_the_redone_utterances(tmp_path):
+    FirstTakeFails.seen = {}
+    rd, cfg = scripted_run(tmp_path, seed=UNIQUE_WORD_SEED)
+    mp = RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0])
+    word = unique_word(read_model(mp.script, Script))
+    asr = CountingAsr(word)
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr})
+    vv = read_model(mp.voice_validation, VoiceValidation)
+    redone = [u for u in vv.utterances if u.attempts == 2]
+    assert vv.decision == "pass" and redone
+    # round 1 transcribes every checked line, round 2 only the lines stage 4 made again
+    assert asr.calls == sum(bool(u.asr) for u in vv.utterances) + sum(bool(u.asr) for u in redone)
+    metrics = StatusStore(rd).get(mp.meeting_id).get(StageId.VOICE_VAL).metrics
+    assert metrics["measures_reused"] > metrics["measured"] > 0
+    assert mp.voice_measures.is_file()
+
+
+def test_reused_measurements_give_the_same_voice_checks(tmp_path):
+    from synthetics.stages.runner import run_stage
+    from synthetics.stages.s5_voice_val import VoiceValidationStage
+
+    FirstTakeFails.seen = {}
+    rd, cfg = scripted_run(tmp_path, seed=UNIQUE_WORD_SEED)
+    mp = RunPaths(rd).meeting(RunPaths(rd).meeting_ids()[0])
+    asr = FirstTakeFails(unique_word(read_model(mp.script, Script)))
+    phase_c(rd, cfg, **{Role.ASR_PRIMARY: asr})
+    reused = mp.voice_validation.read_bytes()
+    assert StatusStore(rd).get(mp.meeting_id).get(StageId.VOICE).attempts == 2
+
+    # the same final audio, every utterance measured again from scratch
+    mp.voice_measures.unlink()
+    out = run_stage(VoiceValidationStage(), rd, mp.meeting_id, cfg,
+                    Backends(cfg.backends, overrides={Role.ASR_PRIMARY: asr}), force=True)
+    assert out.state == "pass"
+    assert mp.voice_validation.read_bytes() == reused
+
+
+def test_measures_are_kept_per_audio_and_service(tmp_path):
+    from synthetics.voice.measures import Measures
+
+    path = tmp_path / "voice_measures.npz"
+    m = Measures(path)
+    vec = np.arange(4, dtype=np.float32) / 7
+    m.embedding("a", "sv_wavlm|aicore:wavlm-sv", lambda: vec)
+    m.transcript("a", "asr_primary|aicore:qwen3-asr|en", lambda: "hello lah")
+    m.mos("a", "aicore:utmos", lambda: 3.25)
+    m.transcript("old", "asr_primary|aicore:qwen3-asr|en", lambda: "an older take")
+    m.save({"a"})
+
+    again = Measures(path)
+    never = lambda: pytest.fail("measured again")  # noqa: E731
+    assert np.array_equal(again.embedding("a", "sv_wavlm|aicore:wavlm-sv", never), vec)
+    assert again.transcript("a", "asr_primary|aicore:qwen3-asr|en", never) == "hello lah"
+    assert again.mos("a", "aicore:utmos", never) == 3.25
+    assert again.reused == 3 and again.measured == 0
+    # another service, another language or audio no longer in the synthesis is measured
+    assert again.transcript("a", "asr_primary|aicore:other-asr|en", lambda: "x") == "x"
+    assert again.transcript("a", "asr_primary|aicore:qwen3-asr|None", lambda: "y") == "y"
+    assert again.transcript("old", "asr_primary|aicore:qwen3-asr|en", lambda: "z") == "z"
+    assert again.measured == 3
+
+    path.write_bytes(b"not a zip")
+    assert Measures(path).utts == {}

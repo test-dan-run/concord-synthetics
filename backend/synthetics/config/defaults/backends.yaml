@@ -16,3 +16,4 @@ backends:
     aligner: qwen3-forced-aligner
     enhancer: deepfilternet3
     dereverb: wpe-dereverb
+    decision: laya-synthetics   # CPU decision model (Laya fine-tuned on suggest/questions.yaml); word matching when it is down
