@@ -1,4 +1,4 @@
-"""The UI data contract (UI_DESIGN_DOCUMENT.md, "Data contract") holds on a fake run of all eight stages, and
+"""The UI data contract (specs/ARCHITECTURE.md, "Viewer data contract") holds on a fake run of all eight stages, and
 on the real m9-e2e run when it is present."""
 
 from __future__ import annotations

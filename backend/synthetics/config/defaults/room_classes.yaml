@@ -1,4 +1,4 @@
-# Stage 1: room class, speaker count, room and table. Design doc "Meeting config rules".
+# Stage 1: room class, speaker count, room and table. specs/ARCHITECTURE.md, "Meeting sampling".
 room_classes:
   ratio: {dist: categorical, weights: {small: 0.3, large: 0.7}}
   classes:

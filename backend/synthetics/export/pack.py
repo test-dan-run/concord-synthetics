@@ -156,7 +156,8 @@ def export_run(run_dir: Path, out: Path, meeting_ids: list[str], opts: PackOptio
 def readme(run_id: str, meeting_ids: list[str], opts: PackOptions) -> str:
     parts = [f"# Synthetics pack: {run_id}", "",
              f"{len(meeting_ids)} synthetic Singapore meetings with exact labels. Every WAV is 16-bit mono PCM at "
-             "16 kHz. `docs/OUTPUT_CONTRACT.md` in the Synthetics app describes every field.", "",
+             "16 kHz. The \"Output contract\" section of `specs/ARCHITECTURE.md` in the Synthetics app describes "
+             "every field.", "",
              "Each meeting folder holds:", "",
              "- `mixture.wav`: the room recording.",
              "- `labels/meeting.rttm` (who spoke when) and `labels/transcript.json` (words with times).",

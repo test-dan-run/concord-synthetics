@@ -1,7 +1,7 @@
 """Scoring helpers for stage 5 and the bake-off: ASR error after Singlish normalisation, and SV aggregates.
 
 WER compares `text_norm` words (particles count; fillers are dropped from both sides when asked, since ASR models
-routinely omit "um" and "uh"). Short utterances use CER over the same words, as the design doc asks for
+routinely omit "um" and "uh"). Short utterances use CER over the same words, as specs/ARCHITECTURE.md asks for
 backchannels. ASR spellings of the same word ("yeah" for the scripts' "ya") are mapped first, on both sides.
 """
 

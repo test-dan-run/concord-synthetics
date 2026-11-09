@@ -1,6 +1,6 @@
 """Stage 1: meeting sampler (CPU). Writes meeting.json.
 
-Sampling order (design doc "Meeting config rules"):
+Sampling order (specs/ARCHITECTURE.md, "Meeting sampling"):
 1. room class, speaker count; then the non-geometric draws (hybrid + remote count, presentation + presenter
    count + who returns to a seat, wall seating by choice), so resampling the room never biases their rates
 2. room, table and positions, redrawn until everyone fits (`fit_resamples` counts the redraws)

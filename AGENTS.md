@@ -1,129 +1,174 @@
-# Synthetics
+# Synthetics agent instructions
 
-Synthetics generates synthetic Singapore meeting recordings (2 to 20 speakers) with exact labels: RTTM speaker
-turns, word timestamps and normalised transcripts. A separate fine-tuning application consumes the output;
-Synthetics never trains models or touches real recordings. A web viewer browses runs and can create and start
-new ones.
+Synthetics generates recordings of made-up Singapore meetings with 2 to 20 speakers, and it labels each recording
+exactly with speaker turns (RTTM), word timestamps and normalised transcripts. A separate fine-tuning application
+trains speech models on the output, so Synthetics never trains models and never touches real meeting recordings. A
+web viewer lets people describe a dataset in plain English, listen to samples, review meetings and export them, and
+it lets engineers inspect every run.
 
-## Stack and layout
+Read these files before you change anything:
 
-Python 3.12 (uv, Typer CLI, Pydantic v2, FastAPI, numpy, pyroomacoustics) and a React 19 + Vite + Tailwind 4
-frontend (TypeScript, vitest). Models are platform services reached through the `aicore` client from
-`../../platform`.
+- `README.md` has the setup commands and the source map, which is the folder tree of the project.
+- `specs/REQUIREMENTS.md` lists what the system must do. Check that a change serves one of its user stories.
+- `specs/ARCHITECTURE.md` says where each kind of code lives and which pattern it follows.
 
-```
-backend/synthetics/
-  config/        schema.py (RunConfig), distributions, loader; defaults/*.yaml hold every default
-  artifacts/     one Pydantic model per run file, MeetingPaths, atomic writers (io.py)
-  stages/        s1_sample.py to s8_labels.py, base.py (Stage protocol), runner.py (cache keys, status)
-  orchestrator/  cli.py (the `synthetics` command), scheduler, GPU lease, phase_c / phase_post loops
-  backends/      role protocols, aicore clients, fakes, record/replay transport
-  suggest/       questions.yaml (decision questions), engine, effects, decision models (natural language -> settings)
-  acoustics/ export/ validators/ text/ nsc/ voice/
-  viewer/        api.py (read routes, audio), builder.py (create/start/stop runs, pilots, review marks, voice swap),
-                 suggest_routes.py, export_routes.py, admin.py (speaker pool, --admin only), contract.py
-frontend/src/    app/ (routes), features/{guided,admin,browser,detail,distributions,builder,pipeline}, lib/, components/
-data/            speaker pools and their fixed splits: nsc_part3_reference_speakers.csv (the first, 175 speakers),
-                 pools/<version>.csv with a <version>.json sidecar (grown pools; p3-406-v2 for new runs)
-config/          sv_thresholds.yaml: calibrated SV thresholds, an overlay for init-run
-tests/           pytest suite; helpers.py::fake_run builds a fake-backend run
-runs/            run directories (git-ignored)
-```
+The code wins when it disagrees with a document, and you fix the document in the same change.
 
 ## Commands
 
-Run from the repo root inside WSL. `just` loads `.env` (copy `.env.example` first). Node comes from nvm, so use
-an interactive shell or load nvm before the frontend recipes.
+Run every command from the repo root inside WSL. `just` loads `.env`, so copy `.env.example` to `.env` first. Node
+comes from nvm, so use a login shell (`bash -l`) or load nvm before the frontend recipes.
 
 ```bash
-uv sync                                       # Python env
-just test                                     # pytest, no GPU or platform needed (about 5 min)
+uv sync                                       # Python environment
+just test                                     # pytest on fake backends, no GPU or platform (about 10 minutes)
 just lint                                     # ruff check backend tests
 just viewer-setup                             # npm install in frontend/ (once)
 just viewer-test                              # vitest
-just viewer-build                             # tsc + vite build into frontend/dist
+just viewer-build                             # tsc and vite build into frontend/dist
 (cd frontend && npm run lint)                 # TypeScript type check
-just init <run> <n> <seed> --set backends.mode=fake   # a run with no GPU (one meeting runs in about 2 min)
-just run <run>                                # all 8 stages; `uv run synthetics resume -r <run>` after a stop
+just init <run> <n> <seed> --set backends.mode=fake   # a run with no GPU (about 10 seconds per meeting)
+just run <run>                                # all eight stages; `uv run synthetics resume -r <run>` after a stop
 just status <run>                             # state counts per stage
-just viewer                                   # API + built UI on http://127.0.0.1:8610 (--read-only drops the builder)
-just viewer-dev                               # API with reload + Vite on :5174
+just viewer                                   # API and built UI on port 8610 (--read-only drops the builder)
+just viewer-dev                               # API with reload and Vite on port 5174
 uv run synthetics viewer --admin              # also the speaker pool admin page
-uv run synthetics pool build --from <folder> --version <v>   # grow the pool from a curated voice folder
-just suggest-eval --fake                      # score a decision model on labelled requests
-uv run synthetics suggest-data --n 2000       # labelled requests for a decision model (leases the generator)
+uv run synthetics pool build --from <folder> --version <v>   # grow the speaker pool from a curated voice folder
+just suggest-eval --fake                      # score the word matching fallback on labelled requests
+uv run synthetics suggest-data --n 2000       # training rows for the decision model (leases the generator)
 ```
 
-`just test` skips tests marked `live` (need platform services, `just test-live`) and `slow`. `just --list`
-shows the rest (one stage on one meeting, NSC prep, judge and SV calibration, bake-off).
+`just --list` shows the rest, e.g., one stage on one meeting, NSC preparation, judge and SV calibration, and the
+voice model comparison.
 
-## How the code is organised
+## Test suites
 
-- Each meeting goes through eight stages. A stage is a class with `id`, `phase`, `roles`, `reads`, `writes`,
-  `version`, `config_slice(cfg)` and `run(ctx) -> StageResult` (`stages/base.py`). It reads earlier stages'
-  files and writes only its own. `stages/runner.py` enforces this.
-- A stage is skipped when `status.json` holds a pass with the same cache key: stage id and version, the stage's
-  config slice, input file hashes, pending feedback and (revision 2 and up) the run revision.
-- Randomness comes from `SeedSequence([run_seed, meeting_seed, stage, attempt])`. Never use an unseeded RNG.
-- Only one GPU phase's models fit at a time, so the scheduler runs each stage across all meetings of a wave
-  (`phases.wave_size` meetings, 10 for new runs; a run without it is one wave), leasing that phase's services
-  with the platform's `tools/stack.py up/down` (`orchestrator/lease.py`). Each wave finishes before the next
-  starts. Execution is sequential: one meeting, one request at a time.
-- The decision role turns a user's words into settings: it only scores the options in `suggest/questions.yaml`,
-  and code applies their effects. It is a decision model on the CPU (`laya-synthetics`, Laya fine-tuned on those
-  questions, on the platform's `decision.systemone` API), never leased. When it is down the viewer uses word
-  matching and says so; `SYNTHETICS_DECISION_SERVICE=0` forces word matching, and the tests set it. A change to
-  `questions.yaml` needs new training rows (`suggest-data`) and a retrain, or the model and the questions drift
-  apart (`just suggest-eval` scores the service, `--service <name>` another one, `--fake` the fallback).
-- Each model role maps to a service name in `config/defaults/backends.yaml`. Swapping a model is a change there.
-  `backends.mode` is `aicore`, `fake`, `replay` or `record`; fake and replay never lease the GPU.
-- Every run file is a Pydantic model in `artifacts/`, written with `artifacts/io.py` (atomic write). Config
-  models are frozen with `extra="forbid"`, so a misspelt YAML key fails loudly.
-- Stage 7 sets levels at the source and never normalises, so far talkers stay quiet.
-- The viewer's read routes never write to a run and serve only whitelisted files, audio included (mixture, noise,
-  utterances, tracks, stems, with byte ranges). The only writes beside a run's results are `review.json` (keep or
-  leave out) and a reviewer's voice swap, which goes through stage 5's swap feedback. Derived numbers (distances,
-  histograms) are computed in the browser. Speakers are never colour-coded; room classes use `cat-1` and `cat-2`.
+The Python tests in `tests/` run against the fake backends, so they need no GPU, platform or dataset. `just test`
+skips tests marked `live`, which need running platform services and run with `just test-live`, and tests marked
+`slow`. Tests import `synthetics.*` and the helpers in `tests/` directly, because pytest sets
+`pythonpath = backend, tests`, and `helpers.py::fake_run` builds a whole fake run. The tests set
+`SYNTHETICS_DECISION_SERVICE=0`, so the viewer uses word matching instead of the decision model.
 
-## Conventions
+The frontend tests are vitest files next to the code they test (`*.test.ts` and `*.test.tsx`), and they run with
+`just viewer-test`. `npm run lint` in `frontend/` is the TypeScript type check.
 
-- Every module starts with a docstring saying what it does and why; comments explain intent, not mechanics.
-- `from __future__ import annotations`, relative imports inside the package, full type hints. Ruff with
-  `E,F,W,I,B,UP,SIM` at line length 120.
-- Tests import `synthetics.*` and `helpers` directly (pytest `pythonpath = backend, tests`) and run against the
-  fake backends. Add a test for new behaviour.
-- Docs are plain English: simple words, complete sentences, no dashes. They describe the system as it is now:
-  no milestone names, dates or "was X until" notes, since git history holds those.
+`uv run synthetics viewer-contract -r <run>` checks every field the viewer reads on every meeting of a run, and
+`tests/test_viewer_contract.py` runs the same check on a fake run.
 
-## Gotchas and things not to do
+## Architecture boundaries
 
-- Never edit a run's frozen `config.yaml`, and never change old runs' results. A change that would alter draws
-  or cache keys must be gated on `RunConfig.revision` (1 for old runs, 2 from `stages.yaml`). A new setting gets
-  a schema default that reproduces the old behaviour, and the YAML default turns it on for new runs; stages 1 and
-  7 leave a setting out of their cache slice while it equals that default (`s1_sample.py`, `s7_acoustic.py`), and
-  `key_terms` only reaches a slice through the lexicon version when a run has terms.
-- Bumping a stage's `version` re-runs that stage on every old run that is resumed. Do it only when outputs
-  should change.
-- Leave `runs/m3-10` untouched. `runs/m9-e2e` and `runs/m5-exit` are the reference real runs.
-- Never start containers or load a model in process; never download weights or datasets into this repo. Weights
-  live in `$AI_ASSETS`, datasets in `/home/user/code/datasets/`.
-- Ask before starting a GPU phase or a real-backend run: they take hours and the GPU is shared.
-- A meeting only clones voices from its own split (`speaker_splits.json`), so splits stay speaker-disjoint. NSC
-  clips with `#name#` redactions are never used (PDPA). Pools are never rewritten: a grown pool is a new file that
-  keeps every earlier speaker's split, assigns each new speaker one split for good (partners together) and is
-  checked against its sidecar's counts. `speaker_pool.refs_index` points a run at a voice folder's clip manifest;
-  unset, runs use the shared `nsc-part3-refs` index.
-- The platform runs one GPU service at a time, except a GPU pack listed in its `config.yaml` `gpu_packs`. Phase C's
-  four GPU services are the pack `synthetics-phase-c`, which the platform starts together with shares of the GPU;
-  phase C's GPU roles must stay exactly that pack (`tests/test_orchestrator.py` checks), or the lease is refused.
-- `status.json` locking uses `fcntl`, so the pipeline runs on Linux only (WSL here), not native Windows.
-- If `just test` says "Failed to spawn: pytest", the `.venv` was built at an older path. Run
-  `uv sync --reinstall` (or `uv run python -m pytest`).
-- When an output file changes, update `docs/OUTPUT_CONTRACT.md`: the fine-tuning application depends on it. New
-  fields get defaults; a rename, removal or change of meaning raises `schema_version`.
-  `synthetics viewer-contract -r <run>` checks the fields the viewer reads.
+Each boundary below is enforced in code or checked by a test, so a change that crosses one will fail.
 
-## Further docs
+- Stages
+  - A meeting goes through eight stages. A stage is a class with `id`, `phase`, `roles`, `reads`, `writes`,
+    `version`, `config_slice(cfg)` and `run(ctx) -> StageResult` (`stages/base.py`).
+  - A stage reads earlier stages' files and writes only its own, and `stages/runner.py` enforces the rule.
+  - A stage is skipped when `status.json` holds a pass with the same cache key. The key covers the stage id and
+    version, the stage's config slice, the hashes of its input files, pending feedback and, from revision 2, the run
+    revision.
+- Models
+  - Every model is a platform service in `../../platform`, reached only through the `aicore` client.
+  - Each model role maps to a service name in `config/defaults/backends.yaml`, so swapping a model is a change
+    there. `backends.mode` is `aicore`, `fake`, `replay` or `record`, and fake and replay never lease the GPU.
+  - Phase C's four GPU services are the platform GPU pack `synthetics-phase-c`. Phase C's GPU roles must stay
+    exactly that pack, or the platform refuses the lease (`tests/test_orchestrator.py` checks).
+- Viewer
+  - The read routes never write to a run, and they serve only whitelisted files, audio included.
+  - The only writes beside a run's results are `review.json` (keep or leave out) and a reviewer's voice swap, which
+    goes through stage 5's swap feedback.
+  - Derived numbers, e.g., distances and histograms, are computed in the browser.
+- Decision model
+  - The decision role turns a user's words into settings by scoring the options in `suggest/questions.yaml`, and
+    code applies the options' effects. The model never writes a value.
+  - It runs on the CPU (`laya-synthetics` on the platform's `decision.systemone` API) and is never leased. When it
+    is down, the viewer uses word matching and says so.
 
-`DESIGN_DOCUMENT.md` (pipeline design, sampling tables, models and thresholds), `UI_DESIGN_DOCUMENT.md` (viewer),
-`docs/OUTPUT_CONTRACT.md` (output files). The code wins when they disagree.
+## File layout and naming
+
+`specs/ARCHITECTURE.md` maps every module, and the source map in `README.md` shows the folder tree. When you add a
+top-level folder or a module under `backend/synthetics/` or `frontend/src/`, or move one, update the source map and
+the module map in the same change.
+
+Names follow these rules:
+
+- Backend files
+  - Stage files are `stages/s<n>_<name>.py` with one `<Name>Stage` class each.
+  - Every run file has one Pydantic model in `artifacts/`, and `artifacts/paths.py::MeetingPaths` names its path.
+  - Defaults live in one YAML file per area in `config/defaults/`, e.g., `turn_taking.yaml`.
+  - Python tests are `tests/test_<area>.py`.
+- Frontend files
+  - Screens live in `frontend/src/features/<area>/` as PascalCase `.tsx` files.
+  - Shared components live in `frontend/src/components/`, and hooks and helpers live in `frontend/src/lib/` as
+    camelCase `.ts` files.
+- Identifiers in run files
+  - Meetings are `m-000001`, speakers are `S01`, `S02` and so on (`S01` is the chair), and turns are `t0001`.
+  - Room classes are `small` and `large`, and services keep their platform names, e.g., `voxcpm2`.
+
+Code follows these conventions:
+
+- Every module starts with a docstring that says what it does and why. Comments explain intent, not mechanics.
+- Python uses `from __future__ import annotations`, relative imports inside the package and full type hints.
+  Ruff checks `E,F,W,I,B,UP,SIM` at line length 120.
+- Randomness comes from `SeedSequence([run_seed, meeting_seed, stage, attempt])`.
+- Config models are frozen with `extra="forbid"`, so a misspelt YAML key fails loudly. Run files are written with
+  `artifacts/io.py`, which writes atomically.
+
+Docs follow the plain writing rules, so they use simple words, complete sentences and no dashes. They describe the
+system as it is now, with no milestone names, dates or notes about how it used to work, because git history holds
+those.
+
+## Always do
+
+- Add a test for new behaviour, and run `just lint` and the tests that cover your change before you say it works.
+  Run `just viewer-test` and `npm run lint` for frontend changes.
+- Give a new setting a schema default that reproduces the old behaviour, and turn it on for new runs in the YAML
+  default.
+  - Stages 1 and 7 leave a setting out of their cache slice while it equals that default (`s1_sample.py`,
+    `s7_acoustic.py`). Other slices use the same serializer pattern.
+  - Gate a change that would alter old runs' draws or cache keys on `RunConfig.revision`, which is 1 for old runs
+    and 2 for new runs.
+- Update `specs/ARCHITECTURE.md` ("Output contract") when an output file changes, because the fine-tuning
+  application depends on it. New fields get defaults, and a rename, removal or change of meaning raises
+  `schema_version`.
+- Before you write a feature, map it onto the existing modules as `specs/ARCHITECTURE.md` describes, and reuse the
+  pattern it names.
+
+## Ask first
+
+- Starting a GPU phase or a real backend run. They take hours and the GPU is shared, so check `nvidia-smi` first.
+- Leasing the 27B generator (`qwen-sea-lion-v4-5-27b-it`) for any reason, including `suggest-data`.
+- Changing `suggest/questions.yaml` questions or options. The decision model is trained on them, so a change needs
+  new rows from `suggest-data` and a retrain, or the model and the questions drift apart. Changing only an
+  option's effects needs no retrain.
+- Bumping a stage's `version`, because every old run that is resumed then runs that stage again.
+- Deleting runs, exports or datasets, and committing or pushing.
+- Work outside the user stories in `specs/REQUIREMENTS.md`.
+
+## Never do
+
+- Runs and results
+  - Never edit a run's frozen `config.yaml`, and never change old runs' results.
+  - Never rewrite a speaker pool. A grown pool is a new file that keeps every earlier speaker's split.
+- Models and data
+  - Never start containers or load a model in process.
+  - Never download weights or datasets into this repo. Weights live in `$AI_ASSETS`, and datasets live in
+    `/home/user/code/datasets/`.
+  - Never stop platform services that another project started.
+- Privacy and splits
+  - Never use NSC clips with `#name#` redactions (PDPA).
+  - Never let a meeting clone a voice from outside its own split in `speaker_splits.json`.
+- Code
+  - Never use an unseeded random number generator.
+  - Never colour-code speakers. Room classes use `cat-1` and `cat-2`.
+  - Never normalise levels in stage 7, because far talkers must stay quiet.
+
+## Environment notes
+
+- `status.json` locking uses `fcntl`, so the pipeline runs on Linux only (WSL here), not on native Windows.
+- If `just test` says "Failed to spawn: pytest", the `.venv` was built at an older path. Run `uv sync --reinstall`,
+  or use `uv run python -m pytest`.
+- If a lease fails with "catalog ... is not answering", the platform catalog is down. Put `AI_STACK_DIRECT=1` in
+  front of the command.
+- `/tmp` in WSL is held in memory, and pytest keeps the temporary folders of failed tests only
+  (`tmp_path_retention_policy = "failed"`).
+- Run git inside WSL. Git from the Windows path to the repo reports "dubious ownership".
