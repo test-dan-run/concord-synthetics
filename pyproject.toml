@@ -43,6 +43,8 @@ aicore = { path = "../../platform/clients/aicore", editable = true }
 testpaths = ["tests"]
 pythonpath = ["backend", "tests"]
 addopts = "--import-mode=importlib -m 'not live and not slow'"
+# A full run leaves about 7 GB of audio in tmp_path, and /tmp is RAM in WSL; keep only failed tests' folders
+tmp_path_retention_policy = "failed"
 markers = [
     "live: needs running platform services (run with `just test-live`)",
     "slow: large-sample distribution checks (run with `just test-slow`)",
